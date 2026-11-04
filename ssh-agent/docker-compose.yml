@@ -1,0 +1,41 @@
+services:
+  # 后端 Agent 引擎服务
+  ops-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ops-copilot-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    volumes:
+      # 持久化数据目录（避免 Windows NTFS 挂载单个 SQLite 文件引起文件锁崩溃）
+      - sqlite_data:/app/data
+    networks:
+      - ops-network
+
+  # 前端 WebSSH 一体化工作台
+  ops-frontend:
+    build:
+      context: ../ssh-client
+      dockerfile: Dockerfile
+    container_name: ops-copilot-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - ops-backend
+    networks:
+      - ops-network
+
+volumes:
+  sqlite_data:
+    driver: local
+
+networks:
+  ops-network:
+    driver: bridge

@@ -1,0 +1,22 @@
+# SmartOps Core Dependencies
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.9.0
+sqlalchemy[asyncio]>=2.0.30
+greenlet>=3.0.0
+aiosqlite>=0.20.0
+asyncssh>=2.17.0
+bashlex>=0.18
+httpx>=0.27.0
+cryptography>=42.0.0
+
+# LangGraph 状态机与大模型环境变量加载
+langgraph>=1.0.0
+python-dotenv>=1.0.0
+
+# 自动化测试
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+
+# 可选：生产环境切换 MySQL 时所需的异步驱动
+aiomysql>=0.2.0
