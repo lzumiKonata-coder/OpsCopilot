@@ -1,5 +1,6 @@
 # 仅将 ssh-agent 与 ssh-client 纳入本仓库，其余无关目录全部排除
 /*
 !/.gitignore
+!/LICENSE
 !/ssh-agent/
 !/ssh-client/
