@@ -42,7 +42,12 @@ OpsCopilot 面向基础设施运维工程师，将传统的黑盒 AI 问答升�
 ### 3. 时间旅行推演：检查点分支分叉 (Branch Fork)
 - 基于 LangGraph 状态检查点与会话树（Session Tree）设计。
 - 允许工程师在排障中途的**任意历史步骤点击“分叉分支”**，克隆当前上下文并开启一条全新的假设性推演链路（如：“如果当时不用重启而是杀孤儿进程会怎样？”），不污染原排障记录。
+- 分叉请求的 `branch_from_session_id` 与 `branch_step_idx` 必须成对出现，且切入点必须真实存在；参数缺失或越界会直接报错，不会静默降级为普通会话。
 - **实现边界**：检查点当前为进程内存储（`MemorySaver`），服务重启后历史分支不再保留；切换持久化 Checkpointer 后可跨重启回溯。
+
+### 4. 双模式对话：Chat 与 Agent
+- 输入框工具栏可切换对话模式：`Chat` 走单次问答接口（`/agent/chat`，不调用工具，适合快速咨询）；`Agent` 走 ReAct 闭环（`/agent/react`，自动执行命令并推演）。
+- 两种模式共享会话历史（`chat_session`），切换模式不会丢失上下文；模型输出的 `<think>` 推理片段在渲染层统一隐藏。
 
 <details>
 <summary>展开查看：断线重连、自愈与深度执行细节（点击展开）</summary>
@@ -134,13 +139,24 @@ OpsCopilot 面向基础设施运维工程师，将传统的黑盒 AI 问答升�
 | :--- | :--- | :--- |
 | `POST` | `/api/v1/hosts` | 注册受管主机并返回主机 ID |
 | `GET` | `/api/v1/hosts` | 查询受管主机资产列表 |
+| `GET` | `/api/v1/hosts/{id}` | 查询主机详情（凭据脱敏） |
+| `DELETE` | `/api/v1/hosts/{id}` | 软删除受管主机 |
+| `POST` | `/api/v1/hosts/{id}/test` | 测试 SSH 连通性与凭据 |
 | `WS` | `/ws/hosts/{id}/terminal` | 建立 WebSSH PTY 双工通道 |
-| `POST` | `/api/v1/hosts/{id}/agent/react` | 发起 ReAct 推演并以 SSE 流式下发事件 |
+| `GET` | `/api/v1/hosts/{id}/agent/sessions` | 查询主机下的对话会话列表 |
+| `POST` | `/api/v1/hosts/{id}/agent/sessions` | 新建对话会话 |
+| `GET` | `/api/v1/agent/sessions/{session_id}` | 查询会话详情与历史消息 |
+| `DELETE` | `/api/v1/agent/sessions/{session_id}` | 删除会话及其消息与里程碑 |
+| `POST` | `/api/v1/hosts/{id}/agent/chat` | Chat 模式：单次问答，SSE 流式返回（不调用工具） |
+| `POST` | `/api/v1/hosts/{id}/agent/react` | Agent 模式：发起 ReAct 推演并以 SSE 流式下发事件 |
 | `GET` | `/api/v1/hosts/{id}/agent/react/stream` | 回放缓冲事件并接续后台任务 |
+| `GET` | `/api/v1/hosts/{id}/agent/react/status` | 查询会话是否仍有后台任务运行 |
 | `POST` | `/api/v1/hosts/{id}/agent/react/approve` | 提交高危命令审批决定 |
 | `POST` | `/api/v1/hosts/{id}/agent/react/cancel` | 取消正在后台运行的推演任务 |
-| `GET` | `/api/v1/hosts/{id}/agent/sessions/{sid}/checkpoints` | 查询会话步骤级检查点 |
-| `GET` | `/api/v1/hosts/{id}/agent/sessions/{sid}/tree` | 查询会话分支树拓扑 |
+| `POST` | `/api/v1/hosts/{id}/agent/react/steer` | 推演中途插话纠偏 |
+| `GET` | `/api/v1/memories` | 查询核心记忆（core_memory） |
+| `POST` | `/api/v1/memories` | 新增核心记忆 |
+| `GET` | `/api/v1/memories/long-term` | 查询长期记忆（long_term_memory） |
 
 服务启动后可访问 `http://127.0.0.1:8000/docs` 查看完整 Swagger 文档。
 
@@ -189,6 +205,8 @@ python -m uvicorn adapter.web.main:app --host 0.0.0.0 --port 8000 --reload
 | `LLM_MODEL` | 否 | 模型名称，默认 `gpt-4o` |
 | `LLM_ENABLE_THINKING` | 否 | 是否开启思维链输出（取决于模型支持） |
 | `SMARTOPS_DATABASE_URL` | 否 | 数据库连接串，默认本地 SQLite，可切换 MySQL / PostgreSQL |
+| `SMARTOPS_DB_ECHO` | 否 | 是否输出 SQLAlchemy SQL 执行日志，默认关闭 |
+| `SMARTOPS_DB_NULL_POOL` | 否 | 是否禁用数据库连接池（测试环境启用，连接用完即关），默认关闭 |
 | `SMARTOPS_SECRET_KEY` | 否 | 凭据加密主密钥，缺省自动生成并持久化到 `.smartops_secret_key` |
 | `MCP_SERVERS` | 否 | 外部 MCP Server 配置（JSON 数组），留空则不启用 |
 
@@ -204,6 +222,8 @@ npm install
 
 # 2. 启动 Vite 开发服务器 (默认监听 5173 端口)
 npm run dev
+# 若 5173 端口被系统占用，可改用其他端口：
+# npm run dev -- --port 3000
 
 # 3. 生产产物构建与代码检查
 npm run lint
@@ -217,10 +237,10 @@ npm run build
 ### 3. 测试与验证
 
 ```bash
-# 全量用例（188 条 = 55 单元 + 133 集成）
+# 全量用例（186 条 = 55 单元 + 131 集成）
 python -m pytest tests/
 
-# 仅快速单元测试（无数据库 / ASGI 依赖，约 4 秒）
+# 仅快速单元测试（无数据库 / ASGI 依赖，秒级完成）
 python -m pytest tests/unit
 
 # 仅集成测试（覆盖 SSE、PTY、审批、MCP、并发与断线续跑）
@@ -233,7 +253,7 @@ python -m pytest tests/integration
 
 ```text
 .
-├── ssh-agent/                           # 后端（洋葱架构 / DDD 分层）
+├── ssh-agent/                           # 后端（洋葱架构）
 │   ├── domain/                          # 核心领域实体与安全策略规则
 │   ├── config/                          # 环境变量集中加载与运行期配置快照
 │   ├── application/                     # LangGraph ReAct 引擎、上下文治理与用例编排
@@ -242,8 +262,9 @@ python -m pytest tests/integration
 │   ├── adapter/                         # 外部基础设施适配层
 │   │   ├── ssh/                         # asyncssh PTY 双工管理与 0.3s PS2 续行自愈
 │   │   ├── security/                    # bashlex AST 25 种包装器解包与 Python 载荷审计
-│   │   └── web/                         # FastAPI 路由、SSE 响应流与 RunEventBroker 缓冲
-│   ├── tests/                           # 188 条用例（unit 55 / integration 133）
+│   │   ├── web/                         # FastAPI 路由、SSE 响应流与依赖装配 (factory.py)
+│   │   └── event_bus/                   # RunEventBroker 事件缓冲与断线回放
+│   ├── tests/                           # 186 条用例（unit 55 / integration 131）
 │   └── run.py                           # 后端启动入口
 │
 └── ssh-client/                          # 前端（React 19 + TypeScript 工作台）

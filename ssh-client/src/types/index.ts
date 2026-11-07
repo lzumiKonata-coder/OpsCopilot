@@ -257,9 +257,5 @@ export interface ChatMilestone {
 
 export type PermissionMode = 'request_approval' | 'full_access';
 
-export interface CommandRiskNotice {
-  isDangerous: boolean;
-  level: 'HIGH' | 'MEDIUM' | 'INFO';
-  title: string;
-  desc: string;
-}
+/** 对话模式：chat 走普通对话接口，agent 走 ReAct 闭环接口 */
+export type AgentMode = 'chat' | 'agent';

@@ -1,7 +1,7 @@
 """文本处理与 Token 估算通用工具"""
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 EMOJI_PATTERN = re.compile(
     r"[\U0001F600-\U0001F64F]"
@@ -16,14 +16,14 @@ EMOJI_PATTERN = re.compile(
 )
 
 
-def remove_emojis(text: Optional[str]) -> str:
+def remove_emojis(text: str | None) -> str:
     """移除文本中的 Emoji，None 原样归一为空字符串"""
     if not text:
         return "" if text is not None else ""
     return EMOJI_PATTERN.sub("", text)
 
 
-def smart_truncate(text: Optional[str], max_chars: int = 2000, head_ratio: float = 0.3) -> str:
+def smart_truncate(text: str | None, max_chars: int = 2000, head_ratio: float = 0.3) -> str:
     """
     智能首尾截断长文本：
     当物理终端回显或文件内容过长时，简单头部截断会破坏尾部最新的错误日志。
@@ -67,7 +67,7 @@ class TokenBudgetEstimator:
     """轻量级 Token 预估器（针对中英混合及终端命令代码场景）"""
 
     @staticmethod
-    def estimate_tokens(text: Optional[str]) -> int:
+    def estimate_tokens(text: str | None) -> int:
         if not text:
             return 0
         # 中文字符（约 1.5 字符 / token）
@@ -77,7 +77,7 @@ class TokenBudgetEstimator:
         return int(zh_chars / 1.5 + other_chars / 3.5) + 1
 
     @classmethod
-    def estimate_messages_tokens(cls, messages: List[Dict[str, Any]]) -> int:
+    def estimate_messages_tokens(cls, messages: list[dict[str, Any]]) -> int:
         total = 0
         for m in messages:
             content = m.get("content", "")

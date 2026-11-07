@@ -3,10 +3,10 @@
 验证 ToolCall、LLMResponse、原生工具定义及 ReAct 状态机工具调用分发
 """
 
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator
 import pytest
 
-from adapter.repository.database import get_db_session
+from adapter.repository.db_engine import get_session_factory
 from adapter.repository import (
     SQLAlchemyChatRepository,
     SQLAlchemySSHConnectionRepository,
@@ -33,25 +33,25 @@ from domain.entities import (
 class ToolCallingMockLLM(ILLMClient):
     """用于测试的原生 Tool Calling Mock 驱动"""
 
-    def __init__(self, responses: List[LLMResponse]):
+    def __init__(self, responses: list[LLMResponse]):
         self.responses = responses
         self.call_count = 0
-        self.received_tools: List[Optional[List[Dict[str, Any]]]] = []
+        self.received_tools: list[list[dict[str, Any]] | None] = []
 
     async def stream_chat(
         self,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.2,
-        tools: Optional[List[Dict[str, Any]]] = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> AsyncGenerator[str, None]:
         res = await self.chat(messages, temperature=temperature, tools=tools)
         yield str(res)
 
     async def chat(
         self,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.2,
-        tools: Optional[List[Dict[str, Any]]] = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
         self.received_tools.append(tools)
         idx = min(self.call_count, len(self.responses) - 1)
@@ -63,7 +63,7 @@ class ToolCallingMockLLM(ILLMClient):
 class FakeAudit(ICommandAuditor):
     """自定义安全审查器"""
 
-    def __init__(self, block_command: Optional[str] = None):
+    def __init__(self, block_command: str | None = None):
         self.block_command = block_command
 
     async def audit(self, command: Command) -> AuditDecision:
@@ -106,7 +106,7 @@ def test_llm_response_and_tool_call_types():
 @pytest.mark.asyncio
 async def test_react_engine_with_native_tool_calling():
     """验证 ReAct 状态机直接消费 execute_ssh_command 工具调用并推进，不依赖文本正则"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
 
@@ -170,7 +170,7 @@ async def test_react_engine_with_native_tool_calling():
 @pytest.mark.asyncio
 async def test_react_engine_tool_calling_audit_interception():
     """验证通过原生 Tool Calling 下发高危违规命令时，安全审计钩子在执行前严密拦截"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
 

@@ -2,12 +2,11 @@
 Web 适配层 - 主机资产管理路由 (ssh_connection / ssh_connection_config)
 """
 
-from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 
-from adapter.web.dependencies import get_host_repository, get_ssh_gateway
+from adapter.web.factory import get_host_repository, get_ssh_gateway
 from adapter.web.schemas import HostResponse, RegisterHostRequest
 from application.ports import ISSHConnectionRepository, ISSHGateway
 from application.usecases.host import RegisterSSHConnectionUseCase
@@ -74,7 +73,7 @@ async def register_host(
     )
 
 
-@router.get("/api/v1/hosts", response_model=List[HostResponse], tags=["Host Management"])
+@router.get("/api/v1/hosts", response_model=list[HostResponse], tags=["Host Management"])
 async def list_hosts(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=200),

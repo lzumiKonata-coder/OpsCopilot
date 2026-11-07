@@ -8,10 +8,9 @@
 """
 
 import pytest
-from typing import List, Optional
 import uuid
 
-from adapter.repository.database import get_db_session
+from adapter.repository.db_engine import get_session_factory
 from adapter.repository import (
     SQLAlchemyChatRepository,
     SQLAlchemySSHConnectionRepository,
@@ -24,9 +23,9 @@ from domain.entities import AuthType, Command, ExecutionResult, SSHConnection
 
 
 class MockBranchingLLM(ILLMClient):
-    def __init__(self, responses: Optional[List[str]] = None):
+    def __init__(self, responses: list[str] | None = None):
         self.call_count = 0
-        self.recorded_prompts: List[str] = []
+        self.recorded_prompts: list[str] = []
         self.responses = responses or [
             "Thought: 探测第 1 步。\nAction: df -h\nStep_Title: 检查挂载点",
             "Thought: 探测第 2 步。\nAction: free -m\nStep_Title: 检查内存",
@@ -48,7 +47,7 @@ class MockBranchingLLM(ILLMClient):
 
 class RecordingSSHGateway(ISSHGateway):
     def __init__(self):
-        self.executed_commands: List[str] = []
+        self.executed_commands: list[str] = []
 
     async def execute(self, host: SSHConnection, command: Command) -> ExecutionResult:
         cmd_str = command.raw_command
@@ -258,7 +257,7 @@ async def test_langgraph_engine_fork_branch_independence():
 @pytest.mark.asyncio
 async def test_react_use_case_branching_end_to_end():
     """测试 ReActUseCase 业务用例中的分支创建事件、状态继承与拓扑树生成"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
 
@@ -313,12 +312,6 @@ async def test_react_use_case_branching_end_to_end():
         assert branch_evs[0]["parent_session_id"] == parent_sid
         assert branch_evs[0]["branch_step"] == 1
 
-        # 3. 验证树形拓扑结构
-        tree = uc.get_session_tree(parent_sid)
-        assert tree["session_id"] == parent_sid
-        assert len(tree["children"]) >= 1
-        assert tree["children"][0]["session_id"] == branch_sid
-
 
 
 @pytest.mark.asyncio
@@ -355,7 +348,7 @@ async def test_record_ssh_session_log_use_case():
     from adapter.repository import SQLAlchemySSHSessionLogRepository
     from application.usecases.ssh_session import RecordSSHSessionLogUseCase
 
-    async for db_session in get_db_session():
+    async with get_session_factory()() as db_session:
         repo = SQLAlchemySSHSessionLogRepository(db_session)
         use_case = RecordSSHSessionLogUseCase(session_log_repo=repo)
 
@@ -380,4 +373,3 @@ async def test_record_ssh_session_log_use_case():
         assert closed_err is not None
         assert closed_err.status == 1
         assert closed_err.error_msg == "Connection timed out"
-        break

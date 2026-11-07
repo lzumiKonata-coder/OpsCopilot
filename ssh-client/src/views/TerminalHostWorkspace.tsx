@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, Copy, Check, X } from 'lucide-react';
-import type { Host, PermissionMode } from '../types';
+import type { AgentMode, Host, PermissionMode } from '../types';
 import { hostService } from '../services/hostService';
 import { TerminalHeader } from '../components/terminal/TerminalHeader';
 import { XTerminal, type XTerminalRef } from '../components/terminal/XTerminal';
@@ -28,6 +28,9 @@ export const TerminalHostWorkspace: React.FC<TerminalHostWorkspaceProps> = ({
     'connecting' | 'connected' | 'disconnected' | 'error'
   >('connecting');
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('request_approval');
+
+  // 对话模式：agent 调 ReAct 闭环接口，chat 调普通对话接口
+  const [agentMode, setAgentMode] = useState<AgentMode>('agent');
 
   // 探索版展开/收起状态 (关闭探索版即收起右侧 Agent 界面，保持会话与消息完全保留)
   const [isAgentPaneOpen, setIsAgentPaneOpen] = useState(true);
@@ -114,6 +117,7 @@ export const TerminalHostWorkspace: React.FC<TerminalHostWorkspaceProps> = ({
     isAgentRunning,
     handleApprovalDecision,
     handleSendPrompt,
+    handleSendChatPrompt,
     handleStopAgent,
     attachRunningTask,
     resetStream,
@@ -249,7 +253,10 @@ export const TerminalHostWorkspace: React.FC<TerminalHostWorkspaceProps> = ({
     const branchPointStep = forkModalState.stepIdx;
     setForkModalState({ isOpen: false, stepIdx: 1 });
 
-    const newBranchSessionId = `branch-${Date.now()}`;
+    const newBranchSessionId =
+      typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `branch-${Date.now()}`;
     await handleSendPrompt(newPrompt, {
       branchFromSessionId: parentSid,
       branchStepIdx: branchPointStep,
@@ -393,6 +400,7 @@ export const TerminalHostWorkspace: React.FC<TerminalHostWorkspaceProps> = ({
         showScrollBottom={showScrollBottom}
         isSessionSidebarOpen={isSessionSidebarOpen}
         permissionMode={permissionMode}
+        mode={agentMode}
         chatScrollRef={chatScrollRef}
         onToggleSessionSidebar={() => setIsSessionSidebarOpen(!isSessionSidebarOpen)}
         onCreateSession={handleCreateSession}
@@ -408,8 +416,11 @@ export const TerminalHostWorkspace: React.FC<TerminalHostWorkspaceProps> = ({
         onScrollToBottom={scrollToBottom}
         onApprovalDecision={handleApprovalDecision}
         onOpenForkModal={handleOpenForkModal}
-        onSend={(p, imgs) => handleSendPrompt(p, undefined, imgs)}
+        onSend={(p, imgs) =>
+          agentMode === 'chat' ? handleSendChatPrompt(p, imgs) : handleSendPrompt(p, undefined, imgs)
+        }
         onStop={handleStopAgent}
+        onModeChange={setAgentMode}
         onPermissionModeChange={setPermissionMode}
         onAttachTerminalBuffer={() => {
           const buf = terminalRef.current?.getBuffer() || '';

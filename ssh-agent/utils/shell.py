@@ -1,10 +1,9 @@
 """Shell 命令解析与清洗通用工具"""
 
 import re
-from typing import List, Optional
 
 
-def detect_os_family(terminal_buffer: Optional[str], host_name: Optional[str] = None) -> str:
+def detect_os_family(terminal_buffer: str | None, host_name: str | None = None) -> str:
     """根据终端快照中的命令提示符 (Prompt)、主机资产名称或回显文本，推断 Linux 发行版族系"""
     clean = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", terminal_buffer) if terminal_buffer else ""
 
@@ -127,11 +126,11 @@ def strip_trailing_comment_outside_quotes(cmd: str) -> str:
     return cmd[:cut_idx].strip()
 
 
-def join_shell_lines(lines: List[str]) -> str:
+def join_shell_lines(lines: list[str]) -> str:
     """将多行 Shell 脚本合并为可直接在 bash 中单行执行的复合语句"""
     if len(lines) <= 1:
         return lines[0] if lines else ""
-    parts: List[str] = []
+    parts: list[str] = []
     for i, line in enumerate(lines):
         l = line.strip()
         if not l:

@@ -1,10 +1,10 @@
 """应用层 - 结构化运维事实提取"""
 
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 
-def extract_semantic_step_fact(step: Dict[str, Any]) -> str:
+def extract_semantic_step_fact(step: dict[str, Any]) -> str:
     """
     结构化提炼单个执行步骤的运维核心事实：
     摒弃盲目的字符串切片截断（如 [:120]），优先提取：
@@ -59,7 +59,7 @@ def extract_semantic_step_fact(step: Dict[str, Any]) -> str:
                         break
 
     # 3. 提取关键系统实体（监听端口、服务名、PID 等）
-    entity_facts: List[str] = []
+    entity_facts: list[str] = []
     ports = re.findall(r"(?:0\.0\.0\.0|127\.0\.0\.1|\*):(\d{2,5})", observation)
     if ports:
         entity_facts.append(f"监听端口:{','.join(set(ports[:3]))}")

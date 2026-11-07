@@ -1,6 +1,6 @@
 """应用层 - Think 节点：前置方案确认与变更任务早熟收敛判定"""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from application.react.state import ReActGraphState
 from domain.policies.intent import (
@@ -14,8 +14,8 @@ class PlanConfirmationMixin:
     @staticmethod
     def _is_premature_mutation_answer(
         thought: str,
-        final_answer: Optional[str],
-        executed_steps: List[Dict[str, Any]],
+        final_answer: str | None,
+        executed_steps: list[dict[str, Any]],
     ) -> bool:
         """变更类任务在未执行任何实质变更前宣告成功的判定"""
         if not final_answer:
@@ -29,9 +29,9 @@ class PlanConfirmationMixin:
         step_idx: int,
         user_prompt: str,
         thought: str,
-        command: Optional[str],
-        final_answer: Optional[str],
-        plan: Optional[str],
+        command: str | None,
+        final_answer: str | None,
+        plan: str | None,
     ) -> bool:
         """判断是否为前置方案确认状态（Step 1 针对变更/高危任务输出执行思路并征询用户开始执行）"""
         is_plan_confirmed = state.get("is_plan_confirmed", False)
@@ -56,11 +56,11 @@ class PlanConfirmationMixin:
         step_idx: int,
         user_prompt: str,
         thought: str,
-        plan: Optional[str],
-        step_title: Optional[str],
+        plan: str | None,
+        step_title: str | None,
         llm_call_count: int,
         total_tokens: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """构造前置方案确认的审批挂起返回"""
         session_id = state.get("session_id") or ""
         approval_id = self.approval_manager.create_approval_request(

@@ -1,7 +1,7 @@
 """应用层 - ReAct Observe & Reflect 节点"""
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from application.ports import ToolOperation
 from domain.policies.intent import is_inspection_command, is_mutation_task
@@ -12,7 +12,7 @@ logger = logging.getLogger("smartops.application.react.nodes.observe")
 
 
 class ObserveAndReflectNodeMixin:
-    async def _node_observe_and_reflect(self, state: ReActGraphState) -> Dict[str, Any]:
+    async def _node_observe_and_reflect(self, state: ReActGraphState) -> dict[str, Any]:
         """Node 4: 回显事实研判与反思节点"""
         command = state.get("current_command", "")
         clean_obs = state.get("current_observation", "")
@@ -134,6 +134,8 @@ class ObserveAndReflectNodeMixin:
             "thought": thought,
             "title": step_title,
             "command": command,
+            "tool_name": tool_name,
+            "tool_call_id": state.get("current_tool_call_id"),
             "observation": clean_obs,
             "analysis": analysis,
             "is_error": not is_step_normal,

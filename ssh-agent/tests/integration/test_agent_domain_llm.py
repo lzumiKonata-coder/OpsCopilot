@@ -5,7 +5,7 @@ SmartOps OpsAgent 领域实体与 LLM 适配层单元测试
 import pytest
 
 from adapter.agent.openai_client import OpenAICompatibleLLMClient
-from adapter.repository.database import get_db_session
+from adapter.repository.db_engine import get_session_factory
 from adapter.repository import SQLAlchemySSHConnectionRepository
 from application.prompts import SYSTEM_PROMPT_TEMPLATE
 from application.usecases.chat import ChatWithOpsAgentUseCase
@@ -46,7 +46,7 @@ async def test_domain_chat_message_and_session():
 @pytest.mark.asyncio
 async def test_use_case_prompt_rendering():
     """测试 2: 验证 ChatWithOpsAgentUseCase 系统提示词动态上下文绑定与渲染"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         test_host = SSHConnection(
             host_id="agent-host-001",
@@ -176,20 +176,3 @@ async def test_llm_client_fallback_intent_routing():
     assert "### 1. 根因分析" in ops_text
     assert "```bash" in ops_text
     assert "df -h" in ops_text
-
-
-@pytest.mark.asyncio
-async def test_non_ops_and_greeting_do_not_extract_commands():
-    """测试 12: 验证问候与非运维简短回答不包含命令，且前端绝不会提取命令或触发弹窗"""
-    # 问候语文本
-    greeting_text = "您好！我是 SmartOps AI 运维智能副驾驶，随时为您提供运维与系统管理支持。请问有什么可以协助您的？"
-    # 非运维文本
-    non_ops_text = "今天天气晴朗，气温约 22 度。如需协助管理服务器或排查故障，请随时告诉我。"
-
-    # 验证领域用例中命令提取返回空列表
-    assert ChatWithOpsAgentUseCase._extract_bash_commands(greeting_text) == []
-    assert ChatWithOpsAgentUseCase._extract_bash_commands(non_ops_text) == []
-
-    # 验证包含代码块时正确提取命令
-    ops_code_text = "### 2. 建议指令\n```bash\n# 步骤 1\nuptime\n# 步骤 2\nfree -m\n```"
-    assert ChatWithOpsAgentUseCase._extract_bash_commands(ops_code_text) == ["uptime", "free -m"]

@@ -1,10 +1,10 @@
 """
-适配层 - 数据库连接与会话生命周期管理 (Database Engine & Session Management)
+适配层 - 数据库引擎与会话生命周期管理 (Database Engine & Session Management)
 基于 SQLAlchemy 2.0 异步引擎，支持 aiosqlite / asyncpg / aiomysql 无缝切换。
 引擎与会话工厂均惰性创建，避免在模块导入时固化运行期配置。
 """
 
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -13,11 +13,12 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 
 from config.settings import load_settings
 
-_engine: Optional[AsyncEngine] = None
-_session_factory: Optional[async_sessionmaker[AsyncSession]] = None
+_engine: AsyncEngine | None = None
+_session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
 def get_engine() -> AsyncEngine:
@@ -26,12 +27,15 @@ def get_engine() -> AsyncEngine:
     if _engine is None:
         settings = load_settings()
         database_url = settings.database_url
+        # 测试环境可启用 NullPool：连接用完即关，避免临时事件循环关闭时连接池残留触发 GC 警告
+        pool_kwargs = {"poolclass": NullPool} if settings.db_null_pool else {}
         _engine = create_async_engine(
             database_url,
             echo=settings.db_echo,
             pool_pre_ping=True,
             # SQLite 独有配置（针对多进程多连接并发增加超时时间与线程检查放宽）
             connect_args={"check_same_thread": False, "timeout": 30} if "sqlite" in database_url else {},
+            **pool_kwargs,
         )
     return _engine
 
@@ -90,6 +94,30 @@ async def init_db() -> None:
             ))
             if not res.fetchall():
                 await conn.execute(text("ALTER TABLE ssh_connection ADD COLUMN passphrase VARCHAR(512) NULL;"))
+
+        # 兼容存量 chat_session 表迁移分叉来源字段
+        if dialect_name == "sqlite":
+            res = await conn.execute(text("PRAGMA table_info(chat_session);"))
+            cols = {row[1] for row in res.fetchall()}
+            if cols:
+                if "parent_session_id" not in cols:
+                    await conn.execute(text("ALTER TABLE chat_session ADD COLUMN parent_session_id VARCHAR(64);"))
+                if "branch_step" not in cols:
+                    await conn.execute(text("ALTER TABLE chat_session ADD COLUMN branch_step INTEGER;"))
+        elif dialect_name in ("postgresql", "postgres"):
+            await conn.execute(text("ALTER TABLE chat_session ADD COLUMN IF NOT EXISTS parent_session_id VARCHAR(64);"))
+            await conn.execute(text("ALTER TABLE chat_session ADD COLUMN IF NOT EXISTS branch_step INTEGER;"))
+        elif dialect_name == "mysql":
+            res = await conn.execute(text(
+                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+                "WHERE TABLE_NAME = 'chat_session' AND COLUMN_NAME IN ('parent_session_id', 'branch_step') "
+                "AND TABLE_SCHEMA = DATABASE();"
+            ))
+            existing_cols = {row[0] for row in res.fetchall()}
+            if "parent_session_id" not in existing_cols:
+                await conn.execute(text("ALTER TABLE chat_session ADD COLUMN parent_session_id VARCHAR(64) NULL;"))
+            if "branch_step" not in existing_cols:
+                await conn.execute(text("ALTER TABLE chat_session ADD COLUMN branch_step INTEGER NULL;"))
 
 
 async def close_db() -> None:

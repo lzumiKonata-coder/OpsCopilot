@@ -3,16 +3,28 @@ Web 适配层 - 依赖注入工厂
 集中从 AppContainer 提供驱动单例与 FastAPI 依赖提供者，供各路由模块复用。
 """
 
+from application.ports.repository import IChatSessionRepository, IMemoryRepository, ISSHConnectionRepository
+
+from application.ports.llm import ILLMClient
+
+from application.ports.ssh import ISSHGateway, ISSHTerminalGateway, ISSHTerminalSessionManager
+
+from application.ports.audit import ICommandAuditor
+
+from application.tool_registry import ToolRegistry
+
+from application.runtime.file_mutation_queue import RemoteFileMutationQueue
+
 from fastapi import Depends
 
-from adapter.bootstrap import container
+from adapter.composition_root import container
 from adapter.repository import (
     SQLAlchemyChatRepository,
     SQLAlchemyMemoryRepository,
     SQLAlchemySSHConnectionRepository,
     SQLAlchemySSHSessionLogRepository,
 )
-from adapter.repository.database import get_db_session
+from adapter.repository.db_engine import get_db_session
 from application.ports import (
     IChatSessionRepository,
     ICommandAuditor,
@@ -116,7 +128,7 @@ def get_react_use_case(
     approval_manager: IApprovalManager = Depends(get_approval_manager),
     steering_manager: ISteeringManager = Depends(get_steering_manager),
 ) -> ReActUseCase:
-    use_case_kwargs = dict(
+    use_case_kwargs = dict[str, ISSHConnectionRepository | ILLMClient | ISSHTerminalSessionManager | ISSHTerminalGateway | ISSHGateway | IChatSessionRepository | IMemoryRepository | ICommandAuditor | IApprovalManager | ISteeringManager | ToolRegistry | RemoteFileMutationQueue](
         host_repo=host_repo,
         llm_client=llm_client,
         terminal_manager=terminal_manager,

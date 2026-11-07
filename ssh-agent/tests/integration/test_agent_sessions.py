@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from adapter.repository.database import get_db_session
+from adapter.repository.db_engine import get_session_factory
 from adapter.repository import SQLAlchemyChatRepository, SQLAlchemySSHConnectionRepository
 from application.ports import ILLMClient
 from application.usecases.agent_session import (
@@ -23,7 +23,7 @@ from tests.fakes.helpers import MockLLMClient
 @pytest.mark.asyncio
 async def test_chat_use_case_strips_redundant_greeting_for_ops_task():
     """测试 8: 验证当用户发出运维需求（如安装 docker）时，即便模型输出带有冗余问候与客套前缀，也会被彻底过滤剥离"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         test_host = SSHConnection(
             host_id="agent-host-docker",
@@ -78,7 +78,7 @@ async def test_chat_use_case_strips_redundant_greeting_for_ops_task():
 @pytest.mark.asyncio
 async def test_agent_session_repository_and_use_cases():
     """测试 9: 验证会话持久化仓储与会话用例的生命周期管理 (CRUD)"""
-    async for db_session in get_db_session():
+    async with get_session_factory()() as db_session:
         host_repo = SQLAlchemySSHConnectionRepository(db_session)
         session_repo = SQLAlchemyChatRepository(db_session)
 
@@ -145,7 +145,7 @@ async def test_agent_session_repository_and_use_cases():
 @pytest.mark.asyncio
 async def test_agent_session_multi_turn_context_and_auto_title():
     """测试 10: 验证多轮对话历史上下文注入 (Multi-turn Context Retention) 与自动命名"""
-    async for db_session in get_db_session():
+    async with get_session_factory()() as db_session:
         host_repo = SQLAlchemySSHConnectionRepository(db_session)
         session_repo = SQLAlchemyChatRepository(db_session)
 
@@ -230,7 +230,7 @@ async def test_chat_use_case_persists_user_message_on_zero_output_exception():
             raise RuntimeError("LLM Service Unavailable (503 / Timeout)")
             yield ""
 
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
 

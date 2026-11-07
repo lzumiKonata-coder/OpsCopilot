@@ -1,6 +1,5 @@
 """应用层 - 主机资产用例 (ssh_connection / ssh_connection_config)"""
 
-from typing import List, Optional
 
 from application.ports import ISSHConnectionRepository
 from domain.entities import SSHConnection
@@ -23,7 +22,7 @@ class GetSSHConnectionUseCase:
     def __init__(self, host_repo: ISSHConnectionRepository):
         self.host_repo = host_repo
 
-    async def execute(self, connection_id: str) -> Optional[SSHConnection]:
+    async def execute(self, connection_id: str) -> SSHConnection | None:
         return await self.host_repo.get_by_id(connection_id)
 
 
@@ -33,7 +32,7 @@ class ListSSHConnectionsUseCase:
     def __init__(self, host_repo: ISSHConnectionRepository):
         self.host_repo = host_repo
 
-    async def execute(self, skip: int = 0, limit: int = 100) -> List[SSHConnection]:
+    async def execute(self, skip: int = 0, limit: int = 100) -> list[SSHConnection]:
         return await self.host_repo.list_all(skip=skip, limit=limit)
 
 

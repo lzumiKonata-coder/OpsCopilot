@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("smartops.mcp")
 
@@ -25,8 +25,8 @@ class McpStdioClient:
         self,
         name: str,
         command: str,
-        args: Optional[List[str]] = None,
-        env: Optional[Dict[str, str]] = None,
+        args: list[str] | None = None,
+        env: dict[str, str] | None = None,
         timeout: float = 30.0,
     ):
         self.name = name
@@ -34,7 +34,7 @@ class McpStdioClient:
         self.args = list(args or [])
         self.env = dict(env or {})
         self.timeout = timeout
-        self._proc: Optional[asyncio.subprocess.Process] = None
+        self._proc: asyncio.subprocess.Process | None = None
         self._lock = asyncio.Lock()
         self._request_id = 0
 
@@ -65,11 +65,11 @@ class McpStdioClient:
         await self._notify("notifications/initialized", {})
         logger.info("MCP server '%s' initialized (pid=%s)", self.name, self._proc.pid)
 
-    async def list_tools(self) -> List[Dict[str, Any]]:
+    async def list_tools(self) -> list[dict[str, Any]]:
         result = await self._request("tools/list", {})
         return list(result.get("tools") or [])
 
-    async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return await self._request(
             "tools/call",
             {"name": tool_name, "arguments": arguments or {}},
@@ -91,7 +91,7 @@ class McpStdioClient:
             except Exception:
                 pass
 
-    async def _notify(self, method: str, params: Dict[str, Any]) -> None:
+    async def _notify(self, method: str, params: dict[str, Any]) -> None:
         """发送 JSON-RPC 通知（无 id，不等待响应）"""
         proc = self._ensure_proc()
         assert proc.stdin is not None
@@ -99,7 +99,7 @@ class McpStdioClient:
         proc.stdin.write((json.dumps(payload, ensure_ascii=True) + "\n").encode("utf-8"))
         await proc.stdin.drain()
 
-    async def _request(self, method: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         proc = self._ensure_proc()
         assert proc.stdin is not None and proc.stdout is not None
 

@@ -1,7 +1,6 @@
 """应用层端口 - 数据仓储契约"""
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
 
 from domain.entities import (
     ChatMessage,
@@ -25,17 +24,17 @@ class ISSHConnectionRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_by_id(self, connection_id: str) -> Optional[SSHConnection]:
+    async def get_by_id(self, connection_id: str) -> SSHConnection | None:
         """根据唯一标识获取主机资产"""
         pass
 
     @abstractmethod
-    async def get_by_identifier(self, identifier: str) -> Optional[SSHConnection]:
+    async def get_by_identifier(self, identifier: str) -> SSHConnection | None:
         """根据 connection_id、主机名 connection_name 或 IP 智能检索目标主机"""
         pass
 
     @abstractmethod
-    async def list_all(self, skip: int = 0, limit: int = 100) -> List[SSHConnection]:
+    async def list_all(self, skip: int = 0, limit: int = 100) -> list[SSHConnection]:
         """分页获取主机资产列表 (过滤已删除 deleted=1)"""
         pass
 
@@ -56,17 +55,17 @@ class ISSHSessionLogRepository(ABC):
         pass
 
     @abstractmethod
-    async def close_log(self, session_id: str, error_msg: Optional[str] = None) -> Optional[SSHSessionLog]:
+    async def close_log(self, session_id: str, error_msg: str | None = None) -> SSHSessionLog | None:
         """更新终端关闭日志与错误信息"""
         pass
 
     @abstractmethod
-    async def get_by_session_id(self, session_id: str) -> Optional[SSHSessionLog]:
+    async def get_by_session_id(self, session_id: str) -> SSHSessionLog | None:
         """查询指定终端会话记录"""
         pass
 
     @abstractmethod
-    async def list_by_connection(self, connection_id: str, limit: int = 50) -> List[SSHSessionLog]:
+    async def list_by_connection(self, connection_id: str, limit: int = 50) -> list[SSHSessionLog]:
         """查询指定连接的历史终端会话记录"""
         pass
 
@@ -82,12 +81,12 @@ class IChatSessionRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_by_id(self, session_id: str) -> Optional[ChatSession]:
+    async def get_by_id(self, session_id: str) -> ChatSession | None:
         """根据 session_id 获取会话实体及全量历史消息与里程碑"""
         pass
 
     @abstractmethod
-    async def list_by_host(self, host_id: str, limit: int = 50) -> List[ChatSession]:
+    async def list_by_host(self, host_id: str, limit: int = 50) -> list[ChatSession]:
         """按目标主机(agent_id)获取历史会话列表（按活跃时间倒序）"""
         pass
 
@@ -106,11 +105,6 @@ class IChatSessionRepository(ABC):
         """记录对话关键里程碑"""
         pass
 
-    @abstractmethod
-    async def list_milestones(self, session_id: str) -> List[ChatMilestone]:
-        """获取会话的所有里程碑"""
-        pass
-
 
 class IMemoryRepository(ABC):
     """
@@ -126,9 +120,9 @@ class IMemoryRepository(ABC):
     async def list_core_memories(
         self,
         user_id: str = "default",
-        category: Optional[str] = None,
+        category: str | None = None,
         limit: int = 20,
-    ) -> List[CoreMemory]:
+    ) -> list[CoreMemory]:
         """查询用户的核心记忆（按优先级倒序）"""
         pass
 
@@ -138,7 +132,7 @@ class IMemoryRepository(ABC):
         user_id: str,
         query_text: str,
         limit: int = 5,
-    ) -> List[CoreMemory]:
+    ) -> list[CoreMemory]:
         """根据用户指令或运维场景匹配最相关的核心记忆并更新使用计数"""
         pass
 
@@ -151,8 +145,8 @@ class IMemoryRepository(ABC):
     async def get_long_term_memories(
         self,
         user_id: str,
-        memory_type: Optional[str] = None,
+        memory_type: str | None = None,
         limit: int = 50,
-    ) -> List[LongTermMemory]:
+    ) -> list[LongTermMemory]:
         """获取长期记忆列表"""
         pass

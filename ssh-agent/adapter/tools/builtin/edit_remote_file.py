@@ -1,6 +1,6 @@
 """内置工具：通过安全静态通道局部修改远端文件"""
 
-from typing import Any, Dict
+from typing import Any
 
 from application.ports import ToolInvocation, ToolOperation, ToolSpec
 
@@ -41,7 +41,7 @@ class EditRemoteFileTool:
 
     def normalize(
         self,
-        args: Dict[str, Any],
+        args: dict[str, Any],
         step_idx: int,
         fallback_thought: str = "",
     ) -> ToolInvocation:

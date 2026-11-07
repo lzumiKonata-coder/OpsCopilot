@@ -1,8 +1,9 @@
 """应用层端口 - 工具层契约（内置 / MCP / 插件工具统一抽象）"""
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Protocol
+from typing import Any, Callable
 
 
 class ToolOperation(str, Enum):
@@ -22,12 +23,12 @@ class ToolSpec:
 
     name: str
     description: str
-    parameters: Dict[str, Any]
+    parameters: dict[str, Any]
     operation: ToolOperation = ToolOperation.COMMAND
     requires_approval: bool = False
     source: str = "builtin"
 
-    def to_openai_schema(self) -> Dict[str, Any]:
+    def to_openai_schema(self) -> dict[str, Any]:
         return {
             "type": "function",
             "function": {
@@ -43,21 +44,22 @@ class ToolInvocation:
     """工具调用的归一化结果，供 think/audit/act 节点统一消费"""
 
     thought: str
-    command: Optional[str]
+    command: str | None
     step_title: str
-    final_answer: Optional[str] = None
-    plan: Optional[str] = None
-    args: Dict[str, Any] = field(default_factory=dict)
+    final_answer: str | None = None
+    plan: str | None = None
+    args: dict[str, Any] = field(default_factory=dict)
 
 
-class ITool(Protocol):
+class ITool(ABC):
     """工具实现端口契约"""
 
     spec: ToolSpec
 
+    @abstractmethod
     def normalize(
         self,
-        args: Dict[str, Any],
+        args: dict[str, Any],
         step_idx: int,
         fallback_thought: str = "",
     ) -> ToolInvocation:
@@ -70,7 +72,7 @@ class ToolContext:
 
     host: Any = None
     session_id: str = ""
-    cancel_check: Optional[Callable[[], Any]] = None
+    cancel_check: Callable[[], Any] | None = None
 
 
 @dataclass
@@ -79,11 +81,12 @@ class ToolResult:
 
     observation: str
     is_error: bool = False
-    meta: Dict[str, Any] = field(default_factory=dict)
+    meta: dict[str, Any] = field(default_factory=dict)
 
 
-class IExecutableTool(ITool, Protocol):
+class IExecutableTool(ITool):
     """可执行外部工具端口契约（如 MCP 工具）"""
 
-    async def execute(self, args: Dict[str, Any], ctx: ToolContext) -> ToolResult:
+    @abstractmethod
+    async def execute(self, args: dict[str, Any], ctx: ToolContext) -> ToolResult:
         ...

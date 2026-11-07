@@ -3,7 +3,7 @@
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from application.tool_registry import ToolRegistry
 from config.settings import load_settings
@@ -18,12 +18,12 @@ logger = logging.getLogger("smartops.mcp")
 class McpServerConfig:
     name: str
     command: str
-    args: List[str] = field(default_factory=list)
-    env: Dict[str, str] = field(default_factory=dict)
+    args: list[str] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
     timeout: float = 30.0
 
 
-def load_mcp_server_configs() -> List[McpServerConfig]:
+def load_mcp_server_configs() -> list[McpServerConfig]:
     """从 MCP_SERVERS 环境变量加载配置（JSON 数组）"""
     raw = load_settings().mcp_servers_raw
     if not raw:
@@ -40,7 +40,7 @@ def load_mcp_server_configs() -> List[McpServerConfig]:
         logger.error("MCP_SERVERS must be a JSON array of server configs")
         return []
 
-    configs: List[McpServerConfig] = []
+    configs: list[McpServerConfig] = []
     for item in data:
         if not isinstance(item, dict) or not item.get("name") or not item.get("command"):
             logger.warning("Skip invalid MCP server config: %s", item)
@@ -60,9 +60,9 @@ def load_mcp_server_configs() -> List[McpServerConfig]:
 class McpManager:
     """按配置启动 MCP Server、发现工具并注册到 ToolRegistry"""
 
-    def __init__(self, configs: Optional[List[McpServerConfig]] = None):
+    def __init__(self, configs: list[McpServerConfig] | None = None):
         self.configs = configs if configs is not None else load_mcp_server_configs()
-        self.clients: List[McpStdioClient] = []
+        self.clients: list[McpStdioClient] = []
 
     async def connect_all(self, registry: ToolRegistry) -> int:
         """连接全部配置的 MCP Server，返回成功注册的工具数量"""

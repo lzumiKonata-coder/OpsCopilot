@@ -10,7 +10,6 @@ import hashlib
 import logging
 import os
 import secrets
-from typing import Optional
 
 from cryptography.fernet import Fernet
 
@@ -68,7 +67,7 @@ def _get_fernet_instance() -> Fernet:
     return Fernet(url_safe_key)
 
 
-_fernet: Optional[Fernet] = None
+_fernet: Fernet | None = None
 
 
 def get_fernet() -> Fernet:
@@ -78,7 +77,7 @@ def get_fernet() -> Fernet:
     return _fernet
 
 
-def encrypt_credential(plain_text: Optional[str]) -> Optional[str]:
+def encrypt_credential(plain_text: str | None) -> str | None:
     """
     对敏感凭据（密码/私钥/Passphrase）执行 AES 对称加密。
     若加密发生异常，严格抛出 RuntimeError 中断保存，杜绝明文静默落库且被标记为 encrypted=1。
@@ -96,7 +95,7 @@ def encrypt_credential(plain_text: Optional[str]) -> Optional[str]:
         raise RuntimeError(f"Credential encryption failure: {e}") from e
 
 
-def decrypt_credential(cipher_text: Optional[str]) -> Optional[str]:
+def decrypt_credential(cipher_text: str | None) -> str | None:
     """对已加密的敏感凭据进行解密，若数据为存量明文则自动兼容返回"""
     if not cipher_text or not cipher_text.strip():
         return cipher_text

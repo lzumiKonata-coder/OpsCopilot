@@ -7,13 +7,13 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from adapter.repository.database import get_db_session
+from adapter.repository.db_engine import get_session_factory
 from adapter.repository import (
     SQLAlchemyChatRepository,
     SQLAlchemySSHConnectionRepository,
 )
 from adapter.ssh.terminal_manager import InMemorySSHTerminalSessionManager
-from adapter.web.dependencies import get_llm_client
+from adapter.web.factory import get_llm_client
 from adapter.web.main import app
 from application.react.observation import detect_command_error
 from application.usecases.react import ReActUseCase
@@ -24,7 +24,7 @@ from utils.shell import clean_extracted_command, detect_os_family
 @pytest.mark.asyncio
 async def test_react_use_case_greeting_and_non_ops():
     """测试 1: 问候与非运维需求直接简短回答，不触发任何终端指令与 ReAct 状态机"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
 
@@ -66,7 +66,7 @@ async def test_react_use_case_greeting_and_non_ops():
 @pytest.mark.asyncio
 async def test_react_use_case_autonomous_loop():
     """测试 2: 后端自主 ReAct 闭环循环 (Thought -> Action -> Observation -> Reflection -> Finish)"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
 
@@ -112,14 +112,14 @@ async def test_react_use_case_autonomous_loop():
         saved_session = await chat_repo.get_by_id(session_id)
         assert saved_session is not None
         assert len(saved_session.messages) >= 2  # user + assistant trace
-        assert len(saved_session.milestones) >= 1  # REACT_DIAGNOSIS
+        assert len(saved_session.milestones) >= 1  # DIAGNOSIS
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_web_api_react_stream_endpoint():
     """测试 3: Web API /api/v1/hosts/{identifier}/agent/react SSE 流式闭环端点"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         host = SSHConnection(
             name="react-web-host",
@@ -201,7 +201,7 @@ def test_detect_os_and_command_error():
 @pytest.mark.asyncio
 async def test_react_use_case_self_healing_from_apt_to_yum():
     """测试 5: ReAct 闭环自愈能力 — 遇 apt-get 报错自动废弃后续预定步骤并自愈切换为 yum"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
 

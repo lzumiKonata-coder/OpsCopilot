@@ -5,7 +5,6 @@
 
 import json
 import pytest
-from typing import List, Optional
 
 from adapter.tools.builtin import build_default_registry
 from application.ports import ILLMClient, ISSHGateway
@@ -18,9 +17,9 @@ from domain.entities import AuthType, Command, ExecutionResult, RiskLevel, SSHCo
 class MemoryMockGateway(ISSHGateway):
     """内存模拟网关，用于测试 read_file, write_file, edit_file"""
 
-    def __init__(self, initial_files: Optional[dict] = None):
+    def __init__(self, initial_files: dict | None = None):
         self.files = initial_files or {}
-        self.executed_commands: List[str] = []
+        self.executed_commands: list[str] = []
 
     async def test_connection(self, host: SSHConnection) -> bool:
         return True
@@ -146,7 +145,7 @@ async def test_react_engine_executes_edit_remote_file_tool():
     )
 
     class MockLLM(ILLMClient):
-        async def chat(self, messages: List[dict], temperature: float = 0.1, tools: Optional[List[dict]] = None) -> dict:
+        async def chat(self, messages: list[dict], temperature: float = 0.1, tools: list[dict] | None = None) -> dict:
             return {
                 "role": "assistant",
                 "content": "需要调大连接池至 500",
@@ -221,7 +220,7 @@ async def test_react_engine_blocks_edit_forbidden_path():
     )
 
     class MockLLM(ILLMClient):
-        async def chat(self, messages: List[dict], temperature: float = 0.1, tools: Optional[List[dict]] = None) -> dict:
+        async def chat(self, messages: list[dict], temperature: float = 0.1, tools: list[dict] | None = None) -> dict:
             return {
                 "role": "assistant",
                 "content": "试图修改 shadow",
@@ -289,7 +288,7 @@ async def test_dynamic_terminal_buffer_in_node_think():
     captured_system_prompts = []
 
     class MockCaptureLLM(ILLMClient):
-        async def chat(self, messages: List[dict], temperature: float = 0.1, tools: Optional[List[dict]] = None) -> dict:
+        async def chat(self, messages: list[dict], temperature: float = 0.1, tools: list[dict] | None = None) -> dict:
             sys_msg = messages[0]["content"]
             captured_system_prompts.append(sys_msg)
             return {

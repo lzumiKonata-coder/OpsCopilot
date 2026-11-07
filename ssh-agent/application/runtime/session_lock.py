@@ -6,7 +6,6 @@
 """
 
 import logging
-from typing import Set
 
 logger = logging.getLogger("smartops.application")
 
@@ -15,7 +14,7 @@ class SessionConcurrencyGuard:
     """进程级会话运行互斥守卫（基于事件循环单线程原子性）"""
 
     def __init__(self):
-        self._active: Set[str] = set()
+        self._active: set[str] = set()
 
     def try_acquire(self, key: str) -> bool:
         """尝试占用会话运行权，已被占用时返回 False"""
@@ -26,6 +25,3 @@ class SessionConcurrencyGuard:
 
     def release(self, key: str) -> None:
         self._active.discard(key)
-
-    def is_active(self, key: str) -> bool:
-        return key in self._active

@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from application.ports import ToolOperation
 from application.react.cancel_context import get_cancel_check
@@ -18,7 +18,7 @@ logger = logging.getLogger("smartops.application.react.nodes.audit")
 
 
 class AuditNodeMixin:
-    async def _node_audit(self, state: ReActGraphState) -> Dict[str, Any]:
+    async def _node_audit(self, state: ReActGraphState) -> dict[str, Any]:
         """Node 2: AST 语法级安全审查与人机协同审批节点"""
         eff_cancel_check = state.get("cancel_check") or get_cancel_check()
         if eff_cancel_check and await eff_cancel_check():
@@ -36,7 +36,7 @@ class AuditNodeMixin:
         operation = tool.spec.operation if tool is not None else ToolOperation.COMMAND
 
         # 1. 运行安全审查（按工具通道类型执行多维度审计）
-        audit_decision: Optional[AuditDecision] = None
+        audit_decision: AuditDecision | None = None
         if operation in {ToolOperation.WRITE_FILE, ToolOperation.EDIT_FILE}:
             path = tool_args.get("path", "")
             content_to_check = tool_args.get("content", "") or tool_args.get("replacement", "")
@@ -126,6 +126,8 @@ class AuditNodeMixin:
                 "step": step_idx,
                 "title": step_title or f"第 {step_idx} 步：安全审计阻断 [{tool_name}]",
                 "command": command or tool_name,
+                "tool_name": tool_name,
+                "tool_call_id": state.get("current_tool_call_id"),
                 "audit_decision": "FORBIDDEN",
                 "risk_level": "FORBIDDEN",
                 "status": "forbidden",

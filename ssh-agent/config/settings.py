@@ -34,6 +34,7 @@ class Settings:
     llm_enable_thinking: bool
     database_url: str
     db_echo: bool
+    db_null_pool: bool
     secret_key: str
     mcp_servers_raw: str
     secret_key_file: str
@@ -49,6 +50,7 @@ def load_settings() -> Settings:
         llm_enable_thinking=_env_bool("LLM_ENABLE_THINKING"),
         database_url=os.getenv("SMARTOPS_DATABASE_URL", DEFAULT_DB_URL),
         db_echo=_env_bool("SMARTOPS_DB_ECHO"),
+        db_null_pool=_env_bool("SMARTOPS_DB_NULL_POOL"),
         secret_key=(os.getenv("SMARTOPS_SECRET_KEY") or "").strip(),
         mcp_servers_raw=(os.getenv("MCP_SERVERS") or "").strip(),
         secret_key_file=os.path.join(os.getcwd(), ".smartops_secret_key"),

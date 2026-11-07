@@ -1,17 +1,17 @@
 """应用层 - ReAct 运行期取消信号上下文（并发安全）"""
 
 import contextvars
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 CancelCheck = Callable[[], Any]
 
-_current_cancel_check: contextvars.ContextVar[Optional[CancelCheck]] = contextvars.ContextVar(
+_current_cancel_check: contextvars.ContextVar[CancelCheck | None] = contextvars.ContextVar(
     "react_cancel_check",
     default=None,
 )
 
 
-def set_cancel_check(cancel_check: Optional[CancelCheck]):
+def set_cancel_check(cancel_check: CancelCheck | None):
     """为当前异步任务绑定取消检查回调"""
     return _current_cancel_check.set(cancel_check)
 
@@ -21,6 +21,6 @@ def reset_cancel_check(token) -> None:
     _current_cancel_check.reset(token)
 
 
-def get_cancel_check() -> Optional[CancelCheck]:
+def get_cancel_check() -> CancelCheck | None:
     """读取当前异步任务的取消检查回调"""
     return _current_cancel_check.get()

@@ -2,7 +2,7 @@
 仓储适配层导出包 (Repository Adapter Package)
 """
 
-from adapter.repository.database import close_db, get_db_session, get_engine, get_session_factory, init_db
+from adapter.repository.db_engine import close_db, get_db_session, get_engine, get_session_factory, init_db
 from adapter.repository.models import (
     Base,
     ChatMessagePO,

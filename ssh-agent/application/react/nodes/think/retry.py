@@ -1,7 +1,7 @@
 """应用层 - Think 节点：丢失 Action 的单步纠错补偿"""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from application.react.state import ReActGraphState
 from utils.text import TokenBudgetEstimator
@@ -15,22 +15,22 @@ class RetryActionMixin:
     async def _retry_missing_action(
         self,
         state: ReActGraphState,
-        conversation: List[Dict[str, Any]],
+        conversation: list[dict[str, Any]],
         step_idx: int,
         user_prompt: str,
         os_family: str,
         is_root: bool,
         host: Any,
         thought: str,
-        command: Optional[str],
-        step_title: Optional[str],
-        final_answer: Optional[str],
-        current_tool_name: Optional[str],
-        current_tool_args: Optional[Dict[str, Any]],
+        command: str | None,
+        step_title: str | None,
+        final_answer: str | None,
+        current_tool_name: str | None,
+        current_tool_args: dict[str, Any] | None,
         llm_call_count: int,
         total_tokens: int,
-        cancel_check: Optional[Any],
-    ) -> Dict[str, Any]:
+        cancel_check: Any | None,
+    ) -> dict[str, Any]:
         """丢失 Action 时自动单步纠错补偿，返回更新后的推演结果"""
         if any(k in thought for k in ["已安装", "无需", "最新版本", "已经存在", "正常运行", "目标达成"]):
             logger.info("Recognized completion/skip intention in thought: '%s'", thought[:80])

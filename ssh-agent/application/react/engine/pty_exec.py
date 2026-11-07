@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import re
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from domain.entities import Command, SSHConnection
 
@@ -18,8 +18,8 @@ class PTYExecMixin:
         host: SSHConnection,
         command: str,
         wait_seconds: float = 1.6,
-        max_timeout: Optional[float] = None,
-        cancel_check: Optional[Callable[[], Any]] = None,
+        max_timeout: float | None = None,
+        cancel_check: Callable[[], Any] | None = None,
     ) -> str:
         """在受管机 PTY 中执行命令，优先通过前端活跃终端管理器注入，兜底走物理连接执行"""
         if self.terminal_manager and self.terminal_manager.has_active_terminal(host.connection_id):

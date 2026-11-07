@@ -1,6 +1,5 @@
 """适配层 - SSH 连接与配置仓储实现"""
 
-from typing import List, Optional
 
 from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +20,7 @@ class SQLAlchemySSHConnectionRepository(ISSHConnectionRepository):
         self.session = session
 
     @staticmethod
-    def _to_entity(po: SSHConnectionPO, cfg_po: Optional[SSHConnectionConfigPO] = None) -> SSHConnection:
+    def _to_entity(po: SSHConnectionPO, cfg_po: SSHConnectionConfigPO | None = None) -> SSHConnection:
         config = SSHConnectionConfig()
         if cfg_po:
             config = SSHConnectionConfig(
@@ -57,7 +56,7 @@ class SQLAlchemySSHConnectionRepository(ISSHConnectionRepository):
             updated_at=po.updated_at,
         )
 
-    async def _get_config_po(self, connection_id: str) -> Optional[SSHConnectionConfigPO]:
+    async def _get_config_po(self, connection_id: str) -> SSHConnectionConfigPO | None:
         stmt = select(SSHConnectionConfigPO).where(SSHConnectionConfigPO.connection_id == connection_id)
         result = await self.session.execute(stmt)
         return result.scalars().first()
@@ -132,7 +131,7 @@ class SQLAlchemySSHConnectionRepository(ISSHConnectionRepository):
             await self.session.refresh(cfg_po)
         return self._to_entity(po, cfg_po)
 
-    async def get_by_id(self, connection_id: str) -> Optional[SSHConnection]:
+    async def get_by_id(self, connection_id: str) -> SSHConnection | None:
         stmt = select(SSHConnectionPO).where(
             SSHConnectionPO.connection_id == connection_id,
             SSHConnectionPO.deleted == 0,
@@ -144,7 +143,7 @@ class SQLAlchemySSHConnectionRepository(ISSHConnectionRepository):
         cfg_po = await self._get_config_po(connection_id)
         return self._to_entity(po, cfg_po)
 
-    async def get_by_identifier(self, identifier: str) -> Optional[SSHConnection]:
+    async def get_by_identifier(self, identifier: str) -> SSHConnection | None:
         # 1. 优先按 connection_id (UUID) 精确查找
         host = await self.get_by_id(identifier)
         if host:
@@ -169,7 +168,7 @@ class SQLAlchemySSHConnectionRepository(ISSHConnectionRepository):
         cfg_po = await self._get_config_po(po.connection_id)
         return self._to_entity(po, cfg_po)
 
-    async def list_all(self, skip: int = 0, limit: int = 100) -> List[SSHConnection]:
+    async def list_all(self, skip: int = 0, limit: int = 100) -> list[SSHConnection]:
         stmt = (
             select(SSHConnectionPO)
             .where(SSHConnectionPO.deleted == 0)

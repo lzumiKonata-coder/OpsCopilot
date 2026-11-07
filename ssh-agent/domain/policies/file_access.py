@@ -2,7 +2,6 @@
 
 import posixpath
 import re
-from typing import Optional
 
 from domain.entities import AuditDecision
 from domain.rules import RiskLevel
@@ -51,7 +50,7 @@ SENSITIVE_READ_FILE_PATHS = [
 ]
 
 
-def audit_file_content_security(content: str) -> Optional[AuditDecision]:
+def audit_file_content_security(content: str) -> AuditDecision | None:
     """审计文件通道写入/替换的内容载荷，阻断反弹 Shell 与后门公钥注入"""
     if not content:
         return None

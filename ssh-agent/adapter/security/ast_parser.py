@@ -1,7 +1,6 @@
 """适配层 - bashlex AST 解析辅助（包装命令解包与节点遍历）"""
 
 import re
-from typing import List, Optional, Tuple
 
 from bashlex import ast
 
@@ -16,7 +15,7 @@ WRAPPER_BINARIES = {
 }
 
 
-def _unwrap_wrapper_command(words: List[str]) -> Tuple[Optional[List[str]], bool]:
+def _unwrap_wrapper_command(words: list[str]) -> tuple[list[str] | None, bool]:
     """
     解包包装类前缀命令。
     返回 (unwrapped_words, is_wrapper):
@@ -234,8 +233,8 @@ class _CommandASTVisitor(ast.nodevisitor):
     """
 
     def __init__(self):
-        self.commands: List[List[str]] = []
-        self.pipeline_chains: List[List[List[str]]] = []
+        self.commands: list[list[str]] = []
+        self.pipeline_chains: list[list[list[str]]] = []
 
     def visitpipeline(self, n, parts):
         chain = []
@@ -251,7 +250,7 @@ class _CommandASTVisitor(ast.nodevisitor):
             self.pipeline_chains.append(chain)
 
     def visitcommand(self, n, parts):
-        words: List[str] = []
+        words: list[str] = []
         for part in parts:
             if getattr(part, "kind", None) == "word":
                 words.append(part.word)

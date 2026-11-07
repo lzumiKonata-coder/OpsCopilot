@@ -1,6 +1,6 @@
 """应用层 - ReAct 状态图节点注册表"""
 
-from typing import Any, Callable, Dict
+from typing import Any, Callable
 
 NodeCallable = Callable[..., Any]
 
@@ -12,7 +12,7 @@ NODE_OBSERVE = "observe_and_reflect_node"
 NODE_FINISH = "finish_node"
 
 
-def build_node_map(engine: Any) -> Dict[str, NodeCallable]:
+def build_node_map(engine: Any) -> dict[str, NodeCallable]:
     """将引擎能力映射为状态图节点 callable，使图编排与节点实现解耦"""
     return {
         NODE_THINK: engine._node_think,

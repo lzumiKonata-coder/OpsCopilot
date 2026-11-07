@@ -10,9 +10,8 @@ import asyncio
 import time
 import uuid
 import pytest
-from typing import List, Optional
 
-from adapter.repository.database import get_db_session
+from adapter.repository.db_engine import get_session_factory
 from adapter.repository import (
     SQLAlchemyChatRepository,
     SQLAlchemySSHConnectionRepository,
@@ -27,7 +26,7 @@ from application.usecases.react import ReActUseCase
 
 
 class MockLLM(ILLMClient):
-    def __init__(self, responses: Optional[List[str]] = None):
+    def __init__(self, responses: list[str] | None = None):
         self.call_count = 0
         self.responses = responses or ["Thought: 探测\nAction: uptime\nStep_Title: 步骤1"]
 
@@ -43,7 +42,7 @@ class MockLLM(ILLMClient):
 
 class MockGateway(ISSHGateway):
     def __init__(self, fixed_output: str = "default output"):
-        self.commands: List[str] = []
+        self.commands: list[str] = []
         self.fixed_output = fixed_output
 
     async def execute(self, host: SSHConnection, command: Command) -> ExecutionResult:
@@ -238,14 +237,26 @@ async def test_branching_preserves_request_parameters_over_parent_state():
     assert "steering_message" not in forked
 
     # 2. 验证 ReActUseCase 初始状态合并时分支请求参数最高优先级
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
         host = await host_repo.save(SSHConnection(
             name="branch-test-host", host="10.0.0.8", port=22, username="root", auth_type=AuthType.PASSWORD, password="pwd"
         ))
 
-        uc = ReActUseCase(host_repo=host_repo, llm_client=MockLLM(), session_repo=chat_repo)
+        # 复用同一用例（共享同一检查点引擎）先执行父会话，产生第 1 步检查点，满足分叉校验
+        uc = ReActUseCase(
+            host_repo=host_repo,
+            llm_client=MockLLM(responses=[
+                "Thought: 第一步检查磁盘\nAction: df -h\nStep_Title: 步骤1",
+                "Thought: 父会话完成\nFinal_Answer: 父会话排查完毕。",
+            ]),
+            session_repo=chat_repo,
+        )
+        async for _ in uc.execute(
+            host.connection_id, "父会话排查", session_id="parent_sess_1", max_steps=2
+        ):
+            pass
 
         # 模拟分支请求：明确指定 request_approval, max_steps=10, max_run_seconds=500
         gen = uc.execute(
@@ -267,7 +278,7 @@ async def test_branching_preserves_request_parameters_over_parent_state():
 @pytest.mark.asyncio
 async def test_async_generator_closes_without_runtime_error_on_generator_exit():
     """测试异步生成器在 aclose() 收到 GeneratorExit 时不会尝试 yield 并抛出 RuntimeError"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
         host = await host_repo.save(SSHConnection(

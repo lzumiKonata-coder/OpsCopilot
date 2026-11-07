@@ -1,7 +1,6 @@
 """应用层 - 记忆系统用例与长期记忆读写辅助 (core_memory / long_term_memory)"""
 
 import logging
-from typing import List, Optional
 
 from application.ports import IMemoryRepository
 from domain.entities import CoreMemory, LongTermMemory
@@ -10,9 +9,9 @@ logger = logging.getLogger("smartops.application.usecases.memory")
 
 
 async def _load_long_term_memory_text(
-    repo: Optional[IMemoryRepository],
+    repo: IMemoryRepository | None,
     user_id: str,
-    host_id: Optional[str] = None,
+    host_id: str | None = None,
     limit: int = 10,
 ) -> str:
     """读取用户长期记忆并格式化为提示词片段；过滤宿主机隔离；异常时降级为空，不影响主流程。"""
@@ -46,14 +45,15 @@ async def _load_long_term_memory_text(
 
 
 async def _save_long_term_memory(
-    repo: Optional[IMemoryRepository],
+    repo: IMemoryRepository | None,
     user_id: str,
     memory_type: str,
     memory_key: str,
     content: str,
     keywords: str = "",
     confidence: float = 0.6,
-    session_id: Optional[str] = None,
+    session_id: str | None = None,
+    source_role: str = "assistant",
 ) -> None:
     """按 (user_id, memory_type, memory_key) 幂等落库长期记忆；失败仅告警，绝不阻断主流程。"""
     if not repo or not content.strip():
@@ -67,6 +67,7 @@ async def _save_long_term_memory(
                 memory_key=memory_key,
                 content=content.strip()[:1000],
                 keywords=keywords or None,
+                source_role=source_role,
                 confidence=confidence,
             )
         )
@@ -86,7 +87,7 @@ class ManageMemoryUseCase:
         content: str,
         category: str = "Rule",
         scope: str = "user",
-        keywords: Optional[str] = None,
+        keywords: str | None = None,
         priority: int = 3,
         user_id: str = "default",
     ) -> CoreMemory:
@@ -104,17 +105,17 @@ class ManageMemoryUseCase:
     async def list_core_memories(
         self,
         user_id: str = "default",
-        category: Optional[str] = None,
+        category: str | None = None,
         limit: int = 20,
-    ) -> List[CoreMemory]:
+    ) -> list[CoreMemory]:
         return await self.memory_repo.list_core_memories(user_id=user_id, category=category, limit=limit)
 
     async def list_long_term_memories(
         self,
         user_id: str = "default",
-        memory_type: Optional[str] = None,
+        memory_type: str | None = None,
         limit: int = 50,
-    ) -> List[LongTermMemory]:
+    ) -> list[LongTermMemory]:
         return await self.memory_repo.get_long_term_memories(
             user_id=user_id, memory_type=memory_type, limit=limit
         )

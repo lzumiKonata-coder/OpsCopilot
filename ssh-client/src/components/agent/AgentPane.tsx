@@ -8,6 +8,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type {
+  AgentMode,
   AgentSessionSummary,
   ChatMessageItem as MessageItemType,
   Host,
@@ -42,6 +43,7 @@ interface AgentPaneProps {
   showScrollBottom: boolean;
   isSessionSidebarOpen: boolean;
   permissionMode: PermissionMode;
+  mode: AgentMode;
   chatScrollRef: React.RefObject<HTMLDivElement | null>;
   onToggleSessionSidebar: () => void;
   onCreateSession: () => void;
@@ -56,6 +58,7 @@ interface AgentPaneProps {
   onOpenForkModal: (stepIdx?: number) => void;
   onSend: (prompt: string, images?: string[]) => void;
   onStop: () => void;
+  onModeChange: (mode: AgentMode) => void;
   onPermissionModeChange: (mode: PermissionMode) => void;
   onAttachTerminalBuffer: () => void;
   onExecutePlan: (approvalId: string) => void;
@@ -77,6 +80,7 @@ export const AgentPane: React.FC<AgentPaneProps> = ({
   showScrollBottom,
   isSessionSidebarOpen,
   permissionMode,
+  mode,
   chatScrollRef,
   onToggleSessionSidebar,
   onCreateSession,
@@ -91,6 +95,7 @@ export const AgentPane: React.FC<AgentPaneProps> = ({
   onOpenForkModal,
   onSend,
   onStop,
+  onModeChange,
   onPermissionModeChange,
   onAttachTerminalBuffer,
   onExecutePlan,
@@ -233,6 +238,8 @@ export const AgentPane: React.FC<AgentPaneProps> = ({
           loading={isAgentRunning}
           targetScopeName={host?.name ? `${host.name} (${host.ip})` : '默认'}
           permissionMode={permissionMode}
+          mode={mode}
+          onModeChange={onModeChange}
           onPermissionModeChange={onPermissionModeChange}
           onSend={onSend}
           onStop={onStop}

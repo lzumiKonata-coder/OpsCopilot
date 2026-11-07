@@ -1,5 +1,5 @@
 import { apiClient } from './api';
-import type { AgentSessionSummary, ChatMilestone } from '../types';
+import type { AgentSessionSummary } from '../types';
 
 export const sessionService = {
   /**
@@ -28,16 +28,6 @@ export const sessionService = {
    */
   async getSessionDetail(sessionId: string): Promise<any> {
     const res = await apiClient.get(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}`);
-    return res.data;
-  },
-
-  /**
-   * 获取会话的排障里程碑列表
-   */
-  async getMilestones(sessionId: string): Promise<ChatMilestone[]> {
-    const res = await apiClient.get<ChatMilestone[]>(
-      `/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/milestones`
-    );
     return res.data;
   },
 

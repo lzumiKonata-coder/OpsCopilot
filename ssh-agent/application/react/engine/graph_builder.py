@@ -1,6 +1,6 @@
 """应用层 - ReAct 状态图构建与编译"""
 
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 from langgraph.graph import END, START, StateGraph
 
@@ -14,10 +14,10 @@ from application.react.engine.node_registry import (
 )
 from application.react.state import ReActGraphState
 
-NodeMap = Dict[str, Callable[..., Any]]
+NodeMap = dict[str, Callable[..., Any]]
 
 
-def build_react_graph(nodes: NodeMap, checkpointer: Optional[Any] = None) -> Any:
+def build_react_graph(nodes: NodeMap, checkpointer: Any | None = None) -> Any:
     """基于显式节点注册表构造并编译 LangGraph 状态机图"""
     builder = StateGraph(ReActGraphState)
 

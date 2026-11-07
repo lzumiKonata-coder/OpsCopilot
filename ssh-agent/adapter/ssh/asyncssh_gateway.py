@@ -10,7 +10,6 @@ import os
 import logging
 import re
 import time
-from typing import Tuple
 
 import asyncssh
 
@@ -156,7 +155,7 @@ class AsyncSSHGateway(ISSHGateway, ISSHTerminalGateway):
 
         max_bytes = command.max_bytes
 
-        async def _read_stream(reader) -> Tuple[str, bool]:
+        async def _read_stream(reader) -> tuple[str, bool]:
             chunks = []
             collected_len = 0
             truncated = False
@@ -279,7 +278,7 @@ class AsyncSSHGateway(ISSHGateway, ISSHTerminalGateway):
         host: SSHConnection,
         cols: int = 80,
         rows: int = 24,
-    ) -> Tuple[asyncssh.SSHClientConnection, asyncssh.SSHClientProcess]:
+    ) -> tuple[asyncssh.SSHClientConnection, asyncssh.SSHClientProcess]:
         """开启远程 PTY 交互会话，分配 xterm-256color 终端"""
         conn_kwargs = self._prepare_connection_options(host)
         conn = await asyncssh.connect(**conn_kwargs)

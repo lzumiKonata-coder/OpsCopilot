@@ -1,7 +1,7 @@
 """应用层 - LangGraph ReAct 引擎核心（生命周期与检查点/分支管理）"""
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 import uuid
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -62,21 +62,21 @@ class LangGraphReActEngine(
     def __init__(
         self,
         llm_client: ILLMClient,
-        terminal_manager: Optional[ISSHTerminalSessionManager] = None,
-        terminal_gateway: Optional[Any] = None,
-        ssh_gateway: Optional[ISSHGateway] = None,
-        auditor: Optional[ICommandAuditor] = None,
-        approval_manager: Optional[IApprovalManager] = None,
+        terminal_manager: ISSHTerminalSessionManager | None = None,
+        terminal_gateway: Any | None = None,
+        ssh_gateway: ISSHGateway | None = None,
+        auditor: ICommandAuditor | None = None,
+        approval_manager: IApprovalManager | None = None,
         approval_timeout: float = 120.0,
-        context_window_size: Optional[int] = None,
-        max_observation_chars: Optional[int] = None,
-        context_compactor: Optional[ReActContextCompactor] = None,
-        session_compactor: Optional[SessionCompactor] = None,
-        checkpointer: Optional[Any] = None,
-        session_tree_manager: Optional[SessionTreeManager] = None,
-        steering_manager: Optional[ISteeringManager] = None,
-        tool_registry: Optional[ToolRegistry] = None,
-        file_mutation_queue: Optional[RemoteFileMutationQueue] = None,
+        context_window_size: int | None = None,
+        max_observation_chars: int | None = None,
+        context_compactor: ReActContextCompactor | None = None,
+        session_compactor: SessionCompactor | None = None,
+        checkpointer: Any | None = None,
+        session_tree_manager: SessionTreeManager | None = None,
+        steering_manager: ISteeringManager | None = None,
+        tool_registry: ToolRegistry | None = None,
+        file_mutation_queue: RemoteFileMutationQueue | None = None,
     ):
         self.llm_client = llm_client
         self.terminal_manager = terminal_manager
@@ -127,11 +127,11 @@ class LangGraphReActEngine(
         # 客户端能力探测只需在初始化时执行一次，避免每次推演都做签名反射
         self._llm_supports_tools, self._llm_supports_on_token = self._detect_llm_capabilities(llm_client)
 
-    async def get_session_checkpoints(self, session_id: str) -> List[Dict[str, Any]]:
+    async def get_session_checkpoints(self, session_id: str) -> list[dict[str, Any]]:
         """时间旅行：获取指定会话所有历史检查点状态与物理执行快照"""
         graph = self.get_compiled_graph()
         config = {"configurable": {"thread_id": session_id}}
-        checkpoints: List[Dict[str, Any]] = []
+        checkpoints: list[dict[str, Any]] = []
         try:
             async for state_snapshot in graph.aget_state_history(config):
                 vals = state_snapshot.values or {}
@@ -160,11 +160,11 @@ class LangGraphReActEngine(
         checkpoints.reverse()
         return checkpoints
 
-    async def get_step_state(self, session_id: str, step_idx: int) -> Optional[Dict[str, Any]]:
+    async def get_step_state(self, session_id: str, step_idx: int) -> dict[str, Any] | None:
         """获取指定步骤完成时的状态机内部状态快照"""
         graph = self.get_compiled_graph()
         config = {"configurable": {"thread_id": session_id}}
-        target_state: Optional[Dict[str, Any]] = None
+        target_state: dict[str, Any] | None = None
         try:
             async for state_snapshot in graph.aget_state_history(config):
                 vals = state_snapshot.values or {}
@@ -180,10 +180,10 @@ class LangGraphReActEngine(
         self,
         parent_session_id: str,
         branch_point_step: int,
-        new_branch_session_id: Optional[str] = None,
-        branch_title: Optional[str] = None,
-        new_prompt: Optional[str] = None,
-    ) -> Tuple[str, Dict[str, Any]]:
+        new_branch_session_id: str | None = None,
+        branch_title: str | None = None,
+        new_prompt: str | None = None,
+    ) -> tuple[str, dict[str, Any]]:
         """从父会话指定步骤分叉出新的独立排障分支，状态完全隔离"""
         parent_state = await self.get_step_state(parent_session_id, branch_point_step)
         if not parent_state:
@@ -206,7 +206,7 @@ class LangGraphReActEngine(
         )
         return branch_id, forked_state
 
-    def build_graph(self, checkpointer: Optional[Any] = None) -> Any:
+    def build_graph(self, checkpointer: Any | None = None) -> Any:
         """基于节点注册表构造并编译状态图"""
         compiled = build_react_graph(build_node_map(self), checkpointer=checkpointer)
         if checkpointer is not None and checkpointer is self.checkpointer:

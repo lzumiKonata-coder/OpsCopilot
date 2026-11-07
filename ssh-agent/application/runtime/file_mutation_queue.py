@@ -6,7 +6,7 @@
 """
 
 import asyncio
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable
 
 
 class RemoteFileMutationQueue:
@@ -15,7 +15,7 @@ class RemoteFileMutationQueue:
     """
 
     def __init__(self):
-        self._locks: Dict[Tuple[str, str], asyncio.Lock] = {}
+        self._locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._global_lock = asyncio.Lock()
 
     async def get_lock(self, host_id: str, remote_path: str) -> asyncio.Lock:

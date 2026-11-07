@@ -4,7 +4,7 @@ import logging
 import re
 import time
 import uuid
-from typing import AsyncGenerator, List, Optional
+from typing import AsyncGenerator
 
 from application.ports import (
     IChatSessionRepository,
@@ -15,9 +15,9 @@ from application.ports import (
 from application.prompts import SYSTEM_PROMPT_TEMPLATE
 from application.usecases.memory import _load_long_term_memory_text, _save_long_term_memory
 from domain.entities import ChatSession
-from domain.rules import EntityNotFoundError, RiskLevel
+from domain.rules import EntityNotFoundError
 from utils.shell import detect_os_family
-from utils.text import remove_emojis
+from utils.text import TokenBudgetEstimator, remove_emojis
 
 logger = logging.getLogger("smartops.application.usecases.chat")
 
@@ -29,8 +29,8 @@ class ChatWithOpsAgentUseCase:
         self,
         host_repo: ISSHConnectionRepository,
         llm_client: ILLMClient,
-        session_repo: Optional[IChatSessionRepository] = None,
-        memory_repo: Optional[IMemoryRepository] = None,
+        session_repo: IChatSessionRepository | None = None,
+        memory_repo: IMemoryRepository | None = None,
     ):
         self.host_repo = host_repo
         self.llm_client = llm_client
@@ -38,32 +38,12 @@ class ChatWithOpsAgentUseCase:
         self.memory_repo = memory_repo
 
     @staticmethod
-    def _extract_risk_level(text: str) -> RiskLevel:
-        upper = text.upper()
-        if "HIGH_RISK" in upper or "高危" in text:
-            return RiskLevel.HIGH_RISK
-        if "FORBIDDEN" in upper or "禁止" in text:
-            return RiskLevel.FORBIDDEN
-        return RiskLevel.SAFE
-
-    @staticmethod
-    def _extract_root_cause(text: str) -> Optional[str]:
+    def _extract_root_cause(text: str) -> str | None:
         match = re.search(r"###\s*1\.\s*\s*根因分析[^\n]*\n(.*?)(?=###|\Z)", text, re.DOTALL)
         if match:
             cause = match.group(1).strip()
             return cause if cause else None
         return None
-
-    @staticmethod
-    def _extract_bash_commands(text: str) -> List[str]:
-        matches = re.findall(r"```(?:bash|sh)?\n(.*?)\n```", text, re.DOTALL)
-        commands = []
-        for block in matches:
-            for line in block.splitlines():
-                trimmed = line.strip()
-                if trimmed and not trimmed.startswith("#"):
-                    commands.append(trimmed)
-        return commands
 
     @staticmethod
     def is_greeting(prompt: str) -> bool:
@@ -80,10 +60,10 @@ class ChatWithOpsAgentUseCase:
         self,
         identifier: str,
         user_prompt: str,
-        terminal_buffer: Optional[str] = None,
-        task_id: Optional[str] = None,
-        permission_mode: Optional[str] = "request_approval",
-        session_id: Optional[str] = None,
+        terminal_buffer: str | None = None,
+        task_id: str | None = None,
+        permission_mode: str | None = "request_approval",
+        session_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         host = await self.host_repo.get_by_identifier(identifier)
         if not host:
@@ -91,7 +71,7 @@ class ChatWithOpsAgentUseCase:
         user_prompt = remove_emojis(user_prompt).strip()
 
         # 会话与多轮上下文加载 (chat_session / chat_message)
-        session: Optional[ChatSession] = None
+        session: ChatSession | None = None
         if self.session_repo:
             if session_id:
                 session = await self.session_repo.get_by_id(session_id)
@@ -99,6 +79,7 @@ class ChatWithOpsAgentUseCase:
                 session = ChatSession(
                     id=session_id or str(uuid.uuid4()),
                     agent_id=host.connection_id,
+                    user_id=host.user_id,
                     title="新会话",
                     messages=[],
                 )
@@ -164,12 +145,17 @@ class ChatWithOpsAgentUseCase:
             recent_history = session.get_recent_history(limit=8)
             for m in recent_history:
                 messages.append({"role": m.role, "content": m.content})
-            session.append_message(role="user", content=user_prompt)
+            session.append_message(
+                role="user",
+                content=user_prompt,
+                priority="HIGH",
+                token_count=TokenBudgetEstimator.estimate_tokens(user_prompt),
+            )
 
         messages.append({"role": "user", "content": user_prompt})
 
         start_time = time.monotonic()
-        full_response_chunks: List[str] = []
+        full_response_chunks: list[str] = []
 
         try:
             if not is_pure_greeting:
@@ -212,7 +198,11 @@ class ChatWithOpsAgentUseCase:
             # 会话历史与里程碑持久化落库 (chat_session / chat_message / chat_milestone)
             if self.session_repo and session:
                 if full_response_chunks:
-                    session.append_message(role="assistant", content=full_text)
+                    session.append_message(
+                        role="assistant",
+                        content=full_text,
+                        token_count=TokenBudgetEstimator.estimate_tokens(full_text),
+                    )
 
                     # 提炼关键排障结论作为里程碑 (chat_milestone)
                     root_cause = self._extract_root_cause(full_text)
@@ -247,7 +237,11 @@ class ChatWithOpsAgentUseCase:
                     # 首 Token 前遭遇异常，仍落库系统级错误记录，确保用户提问不丢库
                     session.append_message(
                         role="assistant",
-                        content="[系统异常：大模型服务响应失败或未返回任何数据，请稍后重试]"
+                        content="[系统异常：大模型服务响应失败或未返回任何数据，请稍后重试]",
+                        priority="CRITICAL",
+                        token_count=TokenBudgetEstimator.estimate_tokens(
+                            "[系统异常：大模型服务响应失败或未返回任何数据，请稍后重试]"
+                        ),
                     )
 
                 try:

@@ -1,7 +1,7 @@
 """应用层 - ReAct 单任务步骤滑动窗口压缩器"""
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from utils.text import TokenBudgetEstimator, smart_truncate
 
@@ -20,10 +20,10 @@ class ReActContextCompactor:
 
     def __init__(
         self,
-        window_size: Optional[int] = None,
-        max_observation_chars: Optional[int] = None,
-        max_history_tokens: Optional[int] = None,
-        model_name: Optional[str] = None,
+        window_size: int | None = None,
+        max_observation_chars: int | None = None,
+        max_history_tokens: int | None = None,
+        model_name: str | None = None,
         min_recent_steps: int = 2,
     ):
         profile = resolve_context_profile(model_name)
@@ -39,33 +39,22 @@ class ReActContextCompactor:
         self.estimator = TokenBudgetEstimator()
 
         # 最近一次压缩的 Token 统计指标（便于调试与遥测）
-        self.last_stats: Dict[str, Any] = {}
+        self.last_stats: dict[str, Any] = {}
 
-    def truncate_observation(self, observation: Optional[str]) -> str:
+    def truncate_observation(self, observation: str | None) -> str:
         """对每步物理回显进行智能截断"""
         return smart_truncate(observation, max_chars=self.max_observation_chars, head_ratio=0.3)
 
-    def estimate_step_tokens(self, step: Dict[str, Any]) -> int:
+    def estimate_step_tokens(self, step: dict[str, Any]) -> int:
         """预估单步格式化后的 Token 消耗"""
         formatted = self._format_single_step(step)
         return self.estimator.estimate_tokens(formatted)
 
-    def compact_react_history(
-        self,
-        executed_steps: List[Dict[str, Any]],
-        window_size: Optional[int] = None,
-    ) -> Tuple[Optional[str], List[str]]:
-        summary, recent, _ = self.compact_react_history_with_stats(
-            executed_steps=executed_steps,
-            window_size=window_size,
-        )
-        return summary, recent
-
     def compact_react_history_with_stats(
         self,
-        executed_steps: List[Dict[str, Any]],
-        window_size: Optional[int] = None,
-    ) -> Tuple[Optional[str], List[str], Dict[str, Any]]:
+        executed_steps: list[dict[str, Any]],
+        window_size: int | None = None,
+    ) -> tuple[str | None, list[str], dict[str, Any]]:
         """
         对已执行步骤进行动态 Token 预算与滑动窗口切分：
         1. 当步数与 Token 预算均在安全范围内时，保持全量详细输出；
@@ -201,25 +190,12 @@ class ReActContextCompactor:
 
         return compacted_summary, recent_formatted, stats
 
-    def format_prompt_history(
-        self,
-        executed_steps: List[Dict[str, Any]],
-        raw_react_history: Optional[List[str]] = None,
-        window_size: Optional[int] = None,
-    ) -> str:
-        text, _ = self.format_prompt_history_with_stats(
-            executed_steps=executed_steps,
-            raw_react_history=raw_react_history,
-            window_size=window_size,
-        )
-        return text
-
     def format_prompt_history_with_stats(
         self,
-        executed_steps: List[Dict[str, Any]],
-        raw_react_history: Optional[List[str]] = None,
-        window_size: Optional[int] = None,
-    ) -> Tuple[str, Dict[str, Any]]:
+        executed_steps: list[dict[str, Any]],
+        raw_react_history: list[str] | None = None,
+        window_size: int | None = None,
+    ) -> tuple[str, dict[str, Any]]:
         """
         组装注入大模型提示词的历史执行记录，并纯函数式返回本调用的监控指标字典：
         返回: (formatted_history_text, stats_dict)
@@ -247,7 +223,7 @@ class ReActContextCompactor:
         return text, stats
 
     @staticmethod
-    def _format_single_step(step: Dict[str, Any]) -> str:
+    def _format_single_step(step: dict[str, Any]) -> str:
         step_idx = step.get("step", 1)
         thought = step.get("thought", "")
         cmd = step.get("command", "")

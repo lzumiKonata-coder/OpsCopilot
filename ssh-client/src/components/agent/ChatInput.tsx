@@ -9,8 +9,11 @@ import {
   AlertTriangle,
   ChevronDown,
   X,
+  Bot,
+  MessageSquare,
+  Check,
 } from 'lucide-react';
-import type { PermissionMode } from '../../types';
+import type { AgentMode, PermissionMode } from '../../types';
 import {
   MAX_IMAGE_DATA_URL_CHARS,
   MAX_IMAGE_FILE_BYTES,
@@ -24,6 +27,8 @@ interface ChatInputProps {
   loading: boolean;
   targetScopeName?: string;
   permissionMode: PermissionMode;
+  mode: AgentMode;
+  onModeChange: (mode: AgentMode) => void;
   onPermissionModeChange: (mode: PermissionMode) => void;
   onSend: (prompt: string, images?: string[]) => void;
   onStop: () => void;
@@ -44,6 +49,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   loading,
   targetScopeName = '默认',
   permissionMode,
+  mode,
+  onModeChange,
   onPermissionModeChange,
   onSend,
   onStop,
@@ -54,11 +61,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [imageError, setImageError] = useState('');
   const [showQuickPrompts, setShowQuickPrompts] = useState(false);
   const [showPermissionMenu, setShowPermissionMenu] = useState(false);
-  const [modelRiskLevel, setModelRiskLevel] = useState<'High' | 'Auto'>('High');
+  const [showModeMenu, setShowModeMenu] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const permissionMenuRef = useRef<HTMLDivElement>(null);
+  const permissionWrapperRef = useRef<HTMLDivElement>(null);
+  const modeMenuRef = useRef<HTMLDivElement>(null);
 
   // 自动调整输入框高度
   useEffect(() => {
@@ -139,23 +148,25 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   };
 
-  // 点击外部关闭权限菜单
+  // 点击外部关闭权限菜单与模式菜单
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
       if (
-        permissionMenuRef.current &&
-        !permissionMenuRef.current.contains(e.target as Node)
+        permissionWrapperRef.current &&
+        !permissionWrapperRef.current.contains(target)
       ) {
         setShowPermissionMenu(false);
       }
+      if (modeMenuRef.current && !modeMenuRef.current.contains(target)) {
+        setShowModeMenu(false);
+      }
     };
-    if (showPermissionMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showPermissionMenu]);
+  }, []);
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -275,44 +286,115 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               <ImageIcon size={16} />
             </button>
 
-            {/* 思考级别 High / Auto 切换（带虎鲸/AI徽标） */}
-            <div
-              className="input-pill-select"
-              title="思考与推演深度模式"
-              onClick={() => setModelRiskLevel(modelRiskLevel === 'High' ? 'Auto' : 'High')}
-            >
-              {/* 虎鲸 / AI 图标 */}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="#388bfd">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9v-2h2v2zm0-4H9V7h2v5z" />
-              </svg>
-              <span>{modelRiskLevel}</span>
-              <ChevronDown size={11} />
-            </div>
+            {/* 对话模式选择：Chat / Agent（上拉菜单） */}
+            <div ref={modeMenuRef} style={{ position: 'relative', display: 'flex' }}>
+              <div
+                className="input-pill-select"
+                title="选择对话模式"
+                onClick={() => {
+                  setShowModeMenu((prev) => !prev);
+                  setShowPermissionMenu(false);
+                }}
+              >
+                {mode === 'agent' ? (
+                  <Bot size={13} color="#388bfd" />
+                ) : (
+                  <MessageSquare size={13} color="#3fb950" />
+                )}
+                <span>{mode === 'agent' ? 'Agent' : 'Chat'}</span>
+                <ChevronDown size={11} />
+              </div>
 
-            {/* 工具权限模式按钮 */}
-            <div
-              className="input-pill-select"
-              title="工具权限模式"
-              onClick={() => setShowPermissionMenu(!showPermissionMenu)}
-            >
-              {permissionMode === 'request_approval' ? (
-                <Hand size={13} color="#f0f0f0" />
-              ) : (
-                <AlertTriangle size={13} color="#ff9900" />
+              {showModeMenu && (
+                <div className="permission-popup-menu" style={{ width: '230px' }}>
+                  <div className="permission-popup-title">对话模式</div>
+
+                  <div
+                    className={`permission-option-item ${mode === 'chat' ? 'active' : ''}`}
+                    onClick={() => {
+                      onModeChange('chat');
+                      setShowModeMenu(false);
+                    }}
+                  >
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <MessageSquare
+                        size={16}
+                        color="#3fb950"
+                        style={{ marginTop: '2px', flexShrink: 0 }}
+                      />
+                      <div>
+                        <div className="permission-option-title">
+                          <span>Chat</span>
+                        </div>
+                        <div className="permission-option-desc">
+                          直接对话问答，不调用工具
+                        </div>
+                      </div>
+                    </div>
+                    {mode === 'chat' && (
+                      <Check size={16} color="#ffffff" style={{ flexShrink: 0 }} />
+                    )}
+                  </div>
+
+                  <div
+                    className={`permission-option-item ${mode === 'agent' ? 'active' : ''}`}
+                    onClick={() => {
+                      onModeChange('agent');
+                      setShowModeMenu(false);
+                    }}
+                  >
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <Bot
+                        size={16}
+                        color="#388bfd"
+                        style={{ marginTop: '2px', flexShrink: 0 }}
+                      />
+                      <div>
+                        <div className="permission-option-title">
+                          <span>Agent</span>
+                        </div>
+                        <div className="permission-option-desc">
+                          自治闭环排障，自动执行命令并推演
+                        </div>
+                      </div>
+                    </div>
+                    {mode === 'agent' && (
+                      <Check size={16} color="#ffffff" style={{ flexShrink: 0 }} />
+                    )}
+                  </div>
+                </div>
               )}
-              <ChevronDown size={11} />
             </div>
 
-            {/* 工具权限模式弹出菜单 (1:1 还原用户参考图) */}
-            <PermissionModeMenu
-              isOpen={showPermissionMenu}
-              permissionMode={permissionMode}
-              menuRef={permissionMenuRef}
-              onChange={(mode) => {
-                onPermissionModeChange(mode);
-                setShowPermissionMenu(false);
-              }}
-            />
+            {/* 工具权限模式按钮与弹出菜单 */}
+            <div ref={permissionWrapperRef} style={{ display: 'flex' }}>
+              <div
+                className="input-pill-select"
+                title="工具权限模式"
+                onClick={() => {
+                  setShowPermissionMenu((prev) => !prev);
+                  setShowModeMenu(false);
+                }}
+              >
+                {permissionMode === 'request_approval' ? (
+                  <Hand size={13} color="#f0f0f0" />
+                ) : (
+                  <AlertTriangle size={13} color="#ff9900" />
+                )}
+                <ChevronDown size={11} />
+              </div>
+
+              {/* 工具权限模式弹出菜单 (1:1 还原用户参考图) */}
+              <PermissionModeMenu
+                isOpen={showPermissionMenu}
+                permissionMode={permissionMode}
+                menuRef={permissionMenuRef}
+                onChange={(mode) => {
+                  onPermissionModeChange(mode);
+                  setShowPermissionMenu(false);
+                }}
+              />
+            </div>
 
             {/* 灵感快捷提示词 Sparkle */}
             <button

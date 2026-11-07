@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Copy, Check, RotateCw, ThumbsUp, ThumbsDown, GitFork } from 'lucide-react';
 import type { ChatMessageItem as MessageItemType } from '../../types';
+import { stripThinkBlocks } from '../../utils/textUtils';
 import { ReActStepCard } from './ReActStepCard';
 import { MemoizedMarkdown } from '../common/MemoizedMarkdown';
 
@@ -73,10 +74,12 @@ const ChatMessageItemComponent: React.FC<ChatMessageItemProps> = ({
 
   // 3. 最终结论 / 综合回答 (Final Answer / Assistant)
   if (message.role === 'assistant') {
+    // 隐藏模型输出的 <think>...</think> 推理过程，仅展示正文
+    const visibleContent = stripThinkBlocks(message.content);
     return (
       <div className="assistant-msg-row">
         <div style={{ fontSize: '14px', lineHeight: '1.65', color: '#e5e5e5' }}>
-          <MemoizedMarkdown content={message.content} />
+          <MemoizedMarkdown content={visibleContent} />
         </div>
 
         {/* 底部小工具条（复制、重试、赞、踩、更多） */}
@@ -85,7 +88,7 @@ const ChatMessageItemComponent: React.FC<ChatMessageItemProps> = ({
             type="button"
             className="assistant-action-btn"
             title="复制内容"
-            onClick={() => handleCopy(message.content)}
+            onClick={() => handleCopy(visibleContent)}
           >
             {copied ? <Check size={14} color="#3fb950" /> : <Copy size={14} />}
           </button>

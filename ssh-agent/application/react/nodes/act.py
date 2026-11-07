@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import time
-from typing import Any, Dict
+from typing import Any
 
 from application.ports import ToolContext, ToolOperation
 from application.react.cancel_context import get_cancel_check
@@ -14,7 +14,7 @@ logger = logging.getLogger("smartops.application.react.nodes.act")
 
 
 class ActNodeMixin:
-    async def _node_act(self, state: ReActGraphState) -> Dict[str, Any]:
+    async def _node_act(self, state: ReActGraphState) -> dict[str, Any]:
         """Node 3: 受管机物理执行节点"""
         eff_cancel_check = state.get("cancel_check") or get_cancel_check()
         if eff_cancel_check and await eff_cancel_check():
@@ -55,6 +55,8 @@ class ActNodeMixin:
                 "step": step_idx,
                 "title": state.get("current_step_title", f"步骤 {step_idx}"),
                 "command": command or f"({tool_name})",
+                "tool_name": tool_name,
+                "tool_call_id": state.get("current_tool_call_id"),
                 "audit_decision": "TIMEOUT",
                 "risk_level": "NORMAL",
                 "status": "timeout",

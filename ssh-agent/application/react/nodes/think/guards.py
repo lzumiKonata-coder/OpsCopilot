@@ -3,7 +3,7 @@
 import hashlib
 import logging
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from application.react.observation import normalize_observation_payload
 from domain.policies.intent import is_inspection_command
@@ -17,7 +17,7 @@ def _budget_result(
     title: str,
     llm_call_count: int,
     total_tokens: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """构造预算超限统一收敛返回"""
     thought_ev = {
         "type": "thought",
@@ -40,7 +40,7 @@ def _budget_result(
     }
 
 
-def check_step_limit(state: Dict[str, Any], step_idx: int) -> Optional[Dict[str, Any]]:
+def check_step_limit(state: dict[str, Any], step_idx: int) -> dict[str, Any] | None:
     """检查是否步数超限"""
     max_steps = state.get("max_steps")
     if max_steps is not None and step_idx > max_steps:
@@ -54,10 +54,10 @@ def check_step_limit(state: Dict[str, Any], step_idx: int) -> Optional[Dict[str,
 
 
 def check_budget(
-    state: Dict[str, Any],
+    state: dict[str, Any],
     step_idx: int,
     executed_steps: list,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """软预算边界校验 (Soft Budgets Check: max_run_seconds / max_llm_calls / max_tokens)"""
     llm_call_count = state.get("llm_call_count", 0)
     total_tokens = state.get("total_tokens", 0)
@@ -105,8 +105,8 @@ def _loop_result(
     llm_call_count: int,
     total_tokens: int,
     is_stalled: bool = False,
-    is_success: Optional[bool] = False,
-) -> Dict[str, Any]:
+    is_success: bool | None = False,
+) -> dict[str, Any]:
     """构造防死循环熔断统一返回"""
     thought_ev = {
         "type": "thought",
@@ -134,10 +134,10 @@ def _loop_result(
 
 
 def check_loop_guard(
-    state: Dict[str, Any],
+    state: dict[str, Any],
     step_idx: int,
     executed_steps: list,
-) -> Tuple[Optional[Dict[str, Any]], str]:
+) -> tuple[dict[str, Any] | None, str]:
     """核心防死循环与进展指纹机制，返回 (熔断结果, 反重复警告文本)"""
     llm_call_count = state.get("llm_call_count", 0)
     total_tokens = state.get("total_tokens", 0)
@@ -180,7 +180,7 @@ def check_loop_guard(
 
     # 3. 累计执行频次熔断：单个只读命令在整场会话中累计执行 >= 3 次且输出无变化
     if len(executed_steps) >= 3:
-        cmd_occurrences: Dict[str, list] = {}
+        cmd_occurrences: dict[str, list] = {}
         for idx, s in enumerate(executed_steps):
             c = s.get("command", "").strip()
             if c:

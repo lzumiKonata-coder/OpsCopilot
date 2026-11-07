@@ -9,7 +9,6 @@
 """
 
 import pytest
-from typing import List, Optional
 
 from application.ports import ILLMClient, ISSHGateway
 from application.react.compaction import ReActContextCompactor, SessionCompactor
@@ -88,11 +87,11 @@ def test_react_context_compactor_within_window():
         },
     ]
 
-    summary, recent = compactor.compact_react_history(steps)
+    summary, recent, _ = compactor.compact_react_history_with_stats(steps)
     assert summary is None
     assert len(recent) == 2
 
-    formatted = compactor.format_prompt_history(steps)
+    formatted, _ = compactor.format_prompt_history_with_stats(steps)
     assert "历史排查阶段性小结" not in formatted
     assert "Step 1:" in formatted
     assert "Step 2:" in formatted
@@ -141,14 +140,14 @@ def test_react_context_compactor_exceeding_window():
         },
     ]
 
-    summary, recent = compactor.compact_react_history(steps)
+    summary, recent, _ = compactor.compact_react_history_with_stats(steps)
     assert summary is not None
     assert "历史排查阶段性小结 (已紧凑压缩前序 2 个步骤)" in summary
     assert "步骤 1 [异常自愈]" in summary
     assert "步骤 2 [正常确认]" in summary
     assert len(recent) == 2  # 活跃窗口为 step 3 与 step 4
 
-    formatted = compactor.format_prompt_history(steps)
+    formatted, _ = compactor.format_prompt_history_with_stats(steps)
     assert "历史排查阶段性小结" in formatted
     assert "近期详细推演与物理回显 (活跃窗口)" in formatted
     assert "Step 3:" in formatted
@@ -190,7 +189,7 @@ def test_session_compactor_multi_turn():
 
 class MockMultiStepLLM(ILLMClient):
     def __init__(self):
-        self.recorded_prompts: List[str] = []
+        self.recorded_prompts: list[str] = []
         self.call_count = 0
         self.responses = [
             "Thought: 查看第一步。\nAction: df -h\nStep_Title: 步骤1",
@@ -199,7 +198,7 @@ class MockMultiStepLLM(ILLMClient):
             "Thought: 查看第四步。\nFinal_Answer: 全部指标正常，排障完成。",
         ]
 
-    async def chat(self, messages: list, temperature: float = 0.2, tools: Optional[list] = None) -> str:
+    async def chat(self, messages: list, temperature: float = 0.2, tools: list | None = None) -> str:
         for m in messages:
             if m.get("role") == "user":
                 self.recorded_prompts.append(m.get("content", ""))
@@ -332,7 +331,7 @@ def test_token_budget_driven_compaction_within_window():
     ]
 
     # 总步数 3 <= window_size 5，但 Token 显然超过 150
-    summary, recent = compactor.compact_react_history(steps)
+    summary, recent, _ = compactor.compact_react_history_with_stats(steps)
 
     # 验证 Token 预算机制生效，成功压缩了前序步骤
     assert summary is not None
@@ -468,7 +467,7 @@ def test_react_compactor_hard_fallback_pruning_on_huge_recent_steps():
         },
     ]
 
-    summary, recent = compactor.compact_react_history(steps)
+    summary, recent, _ = compactor.compact_react_history_with_stats(steps)
 
     # 验证最终兜底逻辑激活
     assert compactor.last_stats.get("fallback_pruned") is True
@@ -476,7 +475,7 @@ def test_react_compactor_hard_fallback_pruning_on_huge_recent_steps():
     assert compactor.last_stats["total_tokens"] <= compactor.max_history_tokens + 20
 
     # 格式化提示词历史
-    formatted = compactor.format_prompt_history(steps)
+    formatted, _ = compactor.format_prompt_history_with_stats(steps)
     assert "已自动截断: 中间省略" in formatted
     # 验证 Token 估算器计算格式化文本整体不超标
     est_total = TokenBudgetEstimator.estimate_tokens(formatted)

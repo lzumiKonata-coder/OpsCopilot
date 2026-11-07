@@ -6,7 +6,7 @@ import time
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from adapter.bootstrap import container
+from adapter.composition_root import container
 from adapter.web.main import app
 
 TEST_HOST = "hadoop100"

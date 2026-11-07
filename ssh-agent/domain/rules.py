@@ -4,7 +4,6 @@
 """
 
 from enum import Enum, IntEnum
-from typing import Set
 
 
 class RiskLevel(str, Enum):
@@ -45,7 +44,7 @@ MAX_TIMEOUT_SECONDS: int = 300
 DEFAULT_MAX_BYTES: int = 8192  # 默认 8KB 输出截断保护
 
 # 绝对禁止的破坏性根目录/系统路径列表（用于 rm 等破坏性命令的级联检查）
-FORBIDDEN_DESTRUCTIVE_PATHS: Set[str] = {
+FORBIDDEN_DESTRUCTIVE_PATHS: set[str] = {
     "/",
     "/*",
     "/etc",
@@ -66,7 +65,7 @@ FORBIDDEN_DESTRUCTIVE_PATHS: Set[str] = {
 }
 
 # 绝对禁止执行的裸命令与设备破坏命令
-FORBIDDEN_COMMAND_NAMES: Set[str] = {
+FORBIDDEN_COMMAND_NAMES: set[str] = {
     "mkfs",
     "mkfs.ext4",
     "mkfs.xfs",
@@ -76,7 +75,7 @@ FORBIDDEN_COMMAND_NAMES: Set[str] = {
 }
 
 # 高危操作命令名（需要严密审查或默认阻断）
-HIGH_RISK_COMMAND_NAMES: Set[str] = {
+HIGH_RISK_COMMAND_NAMES: set[str] = {
     "reboot",
     "shutdown",
     "poweroff",
@@ -100,7 +99,7 @@ HIGH_RISK_COMMAND_NAMES: Set[str] = {
 }
 
 # 敏感文件读取黑名单（命中视作 HIGH_RISK）
-SENSITIVE_FILES: Set[str] = {
+SENSITIVE_FILES: set[str] = {
     "/etc/shadow",
     "/etc/sudoers",
     "/etc/master.passwd",

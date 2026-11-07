@@ -6,7 +6,6 @@
 3. Web API 端点 POST /api/v1/hosts/{identifier}/agent/react/steer 正常响应。
 """
 
-from typing import List, Optional
 import pytest
 import uuid
 
@@ -25,7 +24,7 @@ class MockLongRunningLLM(ILLMClient):
     """模拟一个执行多达 12 步 (超过旧 10 步限制) 并自然完成的模型"""
     def __init__(self):
         self.call_count = 0
-        self.recorded_prompts: List[str] = []
+        self.recorded_prompts: list[str] = []
 
     async def chat(self, messages: list, temperature: float = 0.2, tools=None) -> str:
         for m in messages:

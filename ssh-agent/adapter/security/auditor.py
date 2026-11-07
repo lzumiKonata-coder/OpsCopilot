@@ -2,7 +2,6 @@
 
 import logging
 import re
-from typing import List
 
 import bashlex
 from bashlex.errors import ParsingError
@@ -47,9 +46,9 @@ class BashlexCommandAuditor(ICommandAuditor):
 
     async def audit(self, command: Command) -> AuditDecision:
         raw_cmd = command.raw_command.strip()
-        hit_rules: List[str] = []
-        forbidden_reasons: List[str] = []
-        high_risk_reasons: List[str] = []
+        hit_rules: list[str] = []
+        forbidden_reasons: list[str] = []
+        high_risk_reasons: list[str] = []
 
         try:
             # 1. 解析抽象语法树 (AST)
@@ -59,7 +58,7 @@ class BashlexCommandAuditor(ICommandAuditor):
                 visitor.visit(tree)
 
             cmd_queue = list(visitor.commands)
-            processed_cmds: List[List[str]] = []
+            processed_cmds: list[list[str]] = []
 
             # 检查 pipeline 链条是否输入解释器
             for pipe_chain in visitor.pipeline_chains:

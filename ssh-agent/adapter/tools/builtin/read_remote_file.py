@@ -1,6 +1,6 @@
 """内置工具：通过只读静态通道读取远端文件"""
 
-from typing import Any, Dict
+from typing import Any
 
 from application.ports import ToolInvocation, ToolOperation, ToolSpec
 
@@ -40,7 +40,7 @@ class ReadRemoteFileTool:
 
     def normalize(
         self,
-        args: Dict[str, Any],
+        args: dict[str, Any],
         step_idx: int,
         fallback_thought: str = "",
     ) -> ToolInvocation:

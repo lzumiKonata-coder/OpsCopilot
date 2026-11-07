@@ -5,7 +5,7 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from adapter.repository.database import get_db_session
+from adapter.repository.db_engine import get_session_factory
 from adapter.repository import SQLAlchemyMemoryRepository
 from adapter.web.main import app
 from application.usecases.memory import (
@@ -18,7 +18,7 @@ from domain.entities import CoreMemory
 
 @pytest.mark.asyncio
 async def test_save_and_load_long_term_memory_roundtrip():
-    async for db_session in get_db_session():
+    async with get_session_factory()() as db_session:
         repo = SQLAlchemyMemoryRepository(db_session)
         user_id = f"lt-user-{uuid.uuid4().hex[:8]}"
         memory_key = f"os_env_{uuid.uuid4().hex[:8]}"
@@ -52,7 +52,6 @@ async def test_save_and_load_long_term_memory_roundtrip():
         memories = await ManageMemoryUseCase(repo).list_long_term_memories(user_id=user_id)
         assert len(memories) == 1
         assert memories[0].hit_count == 2
-        break
 
 
 @pytest.mark.asyncio
@@ -66,7 +65,7 @@ async def test_load_long_term_memory_degrades_on_repo_error():
 
 @pytest.mark.asyncio
 async def test_long_term_memory_api_endpoint():
-    async for db_session in get_db_session():
+    async with get_session_factory()() as db_session:
         repo = SQLAlchemyMemoryRepository(db_session)
         user_id = f"api-user-{uuid.uuid4().hex[:8]}"
         await _save_long_term_memory(
@@ -85,12 +84,11 @@ async def test_long_term_memory_api_endpoint():
             assert len(data) >= 1
             assert "nginx" in data[0]["content"]
             assert data[0]["memory_type"] == "Troubleshooting"
-        break
 
 
 @pytest.mark.asyncio
 async def test_confidence_boost_on_repeated_confirmation():
-    async for db_session in get_db_session():
+    async with get_session_factory()() as db_session:
         repo = SQLAlchemyMemoryRepository(db_session)
         user_id = f"conf-user-{uuid.uuid4().hex[:8]}"
         memory_key = f"os_env_{uuid.uuid4().hex[:8]}"
@@ -114,12 +112,11 @@ async def test_confidence_boost_on_repeated_confirmation():
         )
         third = next(m for m in await repo.get_long_term_memories(user_id) if m.memory_key == memory_key)
         assert float(third.confidence) == pytest.approx(0.6)
-        break
 
 
 @pytest.mark.asyncio
 async def test_core_memory_relevance_ranking():
-    async for db_session in get_db_session():
+    async with get_session_factory()() as db_session:
         repo = SQLAlchemyMemoryRepository(db_session)
         user_id = f"rel-user-{uuid.uuid4().hex[:8]}"
 
@@ -154,4 +151,3 @@ async def test_core_memory_relevance_ranking():
         all_memories = await repo.list_core_memories(user_id=user_id, limit=10)
         disk_mem = next(m for m in all_memories if m.title == "磁盘扩容规范")
         assert disk_mem.use_count == 1
-        break

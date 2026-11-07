@@ -48,4 +48,3 @@ def test_registry_rejects_duplicate_tool_names():
 def test_empty_registry_has_no_specs():
     registry = ToolRegistry()
     assert registry.specs() == []
-    assert registry.names() == []

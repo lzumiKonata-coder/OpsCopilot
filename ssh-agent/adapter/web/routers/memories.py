@@ -2,11 +2,10 @@
 Web 适配层 - 核心记忆与长期记忆路由 (core_memory / long_term_memory)
 """
 
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, status
 
-from adapter.web.dependencies import get_memory_repository
+from adapter.web.factory import get_memory_repository
 from adapter.web.schemas import (
     CoreMemoryResponse,
     CreateCoreMemoryRequest,
@@ -18,10 +17,10 @@ from application.usecases.memory import ManageMemoryUseCase
 router = APIRouter()
 
 
-@router.get("/api/v1/memories/long-term", response_model=List[LongTermMemoryResponse], tags=["Memory Management"])
+@router.get("/api/v1/memories/long-term", response_model=list[LongTermMemoryResponse], tags=["Memory Management"])
 async def list_long_term_memories(
     user_id: str = Query("default"),
-    memory_type: Optional[str] = Query(None),
+    memory_type: str | None = Query(None),
     limit: int = Query(50, ge=1, le=100),
     memory_repo: IMemoryRepository = Depends(get_memory_repository),
 ):
@@ -48,10 +47,10 @@ async def list_long_term_memories(
     ]
 
 
-@router.get("/api/v1/memories", response_model=List[CoreMemoryResponse], tags=["Memory Management"])
+@router.get("/api/v1/memories", response_model=list[CoreMemoryResponse], tags=["Memory Management"])
 async def list_core_memories(
     user_id: str = Query("default"),
-    category: Optional[str] = Query(None),
+    category: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     memory_repo: IMemoryRepository = Depends(get_memory_repository),
 ):

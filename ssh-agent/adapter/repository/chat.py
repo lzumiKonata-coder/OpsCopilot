@@ -1,7 +1,6 @@
 """适配层 - 对话会话、消息流与关键里程碑仓储实现"""
 
 from datetime import datetime, timezone
-from typing import List, Optional
 
 from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +28,8 @@ class SQLAlchemyChatRepository(IChatSessionRepository):
             po = ChatSessionPO(
                 id=chat_session.id,
                 agent_id=chat_session.agent_id,
+                parent_session_id=chat_session.parent_session_id,
+                branch_step=chat_session.branch_step,
                 user_id=chat_session.user_id,
                 title=chat_session.title,
                 message_count=len(chat_session.messages),
@@ -38,6 +39,8 @@ class SQLAlchemyChatRepository(IChatSessionRepository):
             self.session.add(po)
         else:
             po.title = chat_session.title
+            po.parent_session_id = chat_session.parent_session_id
+            po.branch_step = chat_session.branch_step
             po.message_count = len(chat_session.messages)
             po.updated_at = chat_session.updated_at
 
@@ -86,7 +89,7 @@ class SQLAlchemyChatRepository(IChatSessionRepository):
 
         return await self.get_by_id(chat_session.id) or chat_session
 
-    async def get_by_id(self, session_id: str) -> Optional[ChatSession]:
+    async def get_by_id(self, session_id: str) -> ChatSession | None:
         stmt = select(ChatSessionPO).where(ChatSessionPO.id == session_id)
         result = await self.session.execute(stmt)
         po = result.scalars().first()
@@ -136,6 +139,8 @@ class SQLAlchemyChatRepository(IChatSessionRepository):
         return ChatSession(
             id=po.id,
             agent_id=po.agent_id,
+            parent_session_id=po.parent_session_id,
+            branch_step=po.branch_step,
             user_id=po.user_id,
             title=po.title or "新会话",
             message_count=po.message_count,
@@ -145,7 +150,7 @@ class SQLAlchemyChatRepository(IChatSessionRepository):
             milestones=milestones,
         )
 
-    async def list_by_host(self, host_id: str, limit: int = 50) -> List[ChatSession]:
+    async def list_by_host(self, host_id: str, limit: int = 50) -> list[ChatSession]:
         stmt = (
             select(ChatSessionPO)
             .where(ChatSessionPO.agent_id == host_id)
@@ -162,6 +167,8 @@ class SQLAlchemyChatRepository(IChatSessionRepository):
                 ChatSession(
                     id=po.id,
                     agent_id=po.agent_id,
+                    parent_session_id=po.parent_session_id,
+                    branch_step=po.branch_step,
                     user_id=po.user_id,
                     title=po.title or "新会话",
                     message_count=po.message_count,
@@ -243,20 +250,4 @@ class SQLAlchemyChatRepository(IChatSessionRepository):
             created_at=po.created_at,
         )
 
-    async def list_milestones(self, session_id: str) -> List[ChatMilestone]:
-        stmt = (
-            select(ChatMilestonePO)
-            .where(ChatMilestonePO.session_id == session_id)
-            .order_by(ChatMilestonePO.created_at.asc())
-        )
-        result = await self.session.execute(stmt)
-        return [
-            ChatMilestone(
-                id=po.id,
-                session_id=po.session_id,
-                type=po.type,
-                content=po.content or "",
-                created_at=po.created_at,
-            )
-            for po in result.scalars().all()
-        ]
+

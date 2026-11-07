@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from application.ports import (
     ToolContext,
@@ -17,7 +17,7 @@ from .client import McpError, McpStdioClient
 logger = logging.getLogger("smartops.mcp")
 
 
-def _extract_text(result: Dict[str, Any]) -> str:
+def _extract_text(result: dict[str, Any]) -> str:
     """把 MCP tools/call 的 content 数组拼接为纯文本 observation"""
     parts: list[str] = []
     for block in result.get("content") or []:
@@ -39,7 +39,7 @@ class McpTool:
         server_name: str,
         tool_name: str,
         description: str,
-        input_schema: Optional[Dict[str, Any]] = None,
+        input_schema: dict[str, Any] | None = None,
     ):
         self.client = client
         self.server_name = server_name
@@ -55,7 +55,7 @@ class McpTool:
 
     def normalize(
         self,
-        args: Dict[str, Any],
+        args: dict[str, Any],
         step_idx: int,
         fallback_thought: str = "",
     ) -> ToolInvocation:
@@ -66,7 +66,7 @@ class McpTool:
             args=args,
         )
 
-    async def execute(self, args: Dict[str, Any], ctx: ToolContext) -> ToolResult:
+    async def execute(self, args: dict[str, Any], ctx: ToolContext) -> ToolResult:
         if ctx.cancel_check is not None:
             try:
                 if await ctx.cancel_check():

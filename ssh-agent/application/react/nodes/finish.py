@@ -1,13 +1,13 @@
 """应用层 - ReAct Finish 节点"""
 
-from typing import Any, Dict
+from typing import Any
 
 from application.react.observation import detect_command_error
 from application.react.state import ReActGraphState
 
 
 class FinishNodeMixin:
-    async def _node_finish(self, state: ReActGraphState) -> Dict[str, Any]:
+    async def _node_finish(self, state: ReActGraphState) -> dict[str, Any]:
         """Node 5: 最终报告与结论收敛节点"""
         executed_steps = state.get("executed_steps") or []
         final_conclusion = state.get("final_conclusion") or state.get("final_answer")

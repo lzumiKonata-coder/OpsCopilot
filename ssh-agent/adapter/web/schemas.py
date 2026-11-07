@@ -4,9 +4,9 @@ Web 适配层 - 外部交互 DTO (Data Transfer Objects)
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from domain.rules import AuthType
 
@@ -29,20 +29,20 @@ class RegisterHostRequest(BaseModel):
             }
         }
     )
-    name: Optional[str] = Field(default=None, description="主机显示名称")
-    connection_name: Optional[str] = Field(default=None, description="连接名称")
-    ip: Optional[str] = Field(default=None, description="主机 IPv4/IPv6 或域名")
-    host: Optional[str] = Field(default=None, description="主机地址")
+    name: str | None = Field(default=None, description="主机显示名称")
+    connection_name: str | None = Field(default=None, description="连接名称")
+    ip: str | None = Field(default=None, description="主机 IPv4/IPv6 或域名")
+    host: str | None = Field(default=None, description="主机地址")
     port: int = Field(default=22, ge=1, le=65535, description="SSH 端口")
     username: str = Field(..., description="登录用户名")
     auth_type: AuthType = Field(default=AuthType.PASSWORD, description="认证类型: 1/PASSWORD 或 2/PRIVATE_KEY")
-    password: Optional[str] = Field(default=None, description="登录密码（PASSWORD 认证必填）")
-    private_key: Optional[str] = Field(default=None, description="OpenSSH 格式私钥内容（PRIVATE_KEY 认证选填）")
-    passphrase: Optional[str] = Field(default=None, description="私钥解锁口令（可选）")
+    password: str | None = Field(default=None, description="登录密码（PASSWORD 认证必填）")
+    private_key: str | None = Field(default=None, description="OpenSSH 格式私钥内容（PRIVATE_KEY 认证选填）")
+    passphrase: str | None = Field(default=None, description="私钥解锁口令（可选）")
     connection_timeout: int = Field(default=10, ge=1, le=60, description="连接超时时间（秒）")
     keepalive_interval: int = Field(default=60, ge=0, le=3600, description="保活间隔时间（秒）")
     strict_host_key_check: int = Field(default=0, description="是否严格校验主机密钥: 0-否, 1-是")
-    known_hosts: Optional[str] = Field(default=None, description="已知主机密钥文件路径或公钥")
+    known_hosts: str | None = Field(default=None, description="已知主机密钥文件路径或公钥")
     user_id: str = Field(default="default", description="所属用户ID")
 
 
@@ -74,8 +74,8 @@ class HostResponse(BaseModel):
     username: str
     auth_type: Any
     connection_timeout: int
-    strict_host_key_check: Optional[int] = 0
-    known_hosts: Optional[str] = None
+    strict_host_key_check: int | None = 0
+    known_hosts: str | None = None
     status: int = 0
     user_id: str = "default"
 
@@ -94,10 +94,10 @@ class AgentChatRequest(BaseModel):
         }
     )
     prompt: str = Field(..., min_length=1, description="用户运维需求或疑问")
-    terminal_buffer: Optional[str] = Field(default=None, description="终端屏幕缓冲区快照")
-    task_id: Optional[str] = Field(default=None, description="可选的任务ID，不传则自动生成")
-    session_id: Optional[str] = Field(default=None, description="会话全局唯一 ID，传空则自动关联或创建")
-    permission_mode: Optional[Literal["request_approval", "full_access"]] = Field(
+    terminal_buffer: str | None = Field(default=None, description="终端屏幕缓冲区快照")
+    task_id: str | None = Field(default=None, description="可选的任务ID，不传则自动生成")
+    session_id: str | None = Field(default=None, description="会话全局唯一 ID，传空则自动关联或创建")
+    permission_mode: Literal["request_approval", "full_access"] | None = Field(
         default="request_approval",
         description="工具权限模式：request_approval (只读放行，写入和执行需确认) 或 full_access (跳过内置风险分级，仅平台硬性规则拦截)"
     )
@@ -116,26 +116,26 @@ class ReActRequest(BaseModel):
         }
     )
     prompt: str = Field(..., min_length=1, description="运维排障目标或需求")
-    images: Optional[List[str]] = Field(
+    images: list[str] | None = Field(
         default=None,
         max_length=4,
         description="用户随消息上传的图片（data URL / base64，最多 4 张，单张 data URL 不超过 2MB），将以多模态消息传给大模型",
     )
-    terminal_buffer: Optional[str] = Field(default=None, description="终端屏幕缓冲区快照")
-    session_id: Optional[str] = Field(default=None, description="会话唯一 ID")
-    max_steps: Optional[int] = Field(default=None, ge=1, description="最大推演步数 (可选，默认不限制步数，由任务自然收敛与安全熔断驱动)")
-    max_run_seconds: Optional[float] = Field(default=None, ge=10.0, le=3600.0, description="最大运行时间软预算（秒，默认 600s，上限 3600s）")
-    max_llm_calls: Optional[int] = Field(default=None, ge=1, le=200, description="最大 LLM 调用次数软预算（默认 30 次，上限 200 次）")
-    max_tokens: Optional[int] = Field(default=None, ge=1000, le=500_000, description="最大 Token 消耗预算（默认 100,000，上限 500,000）")
-    pre_planned_steps: Optional[List[Dict[str, str]]] = Field(default=None, description="预规划排查步骤列表")
-    permission_mode: Optional[Literal["request_approval", "full_access"]] = Field(
+    terminal_buffer: str | None = Field(default=None, description="终端屏幕缓冲区快照")
+    session_id: str | None = Field(default=None, description="会话唯一 ID")
+    max_steps: int | None = Field(default=None, ge=1, description="最大推演步数 (可选，默认不限制步数，由任务自然收敛与安全熔断驱动)")
+    max_run_seconds: float | None = Field(default=None, ge=10.0, le=3600.0, description="最大运行时间软预算（秒，默认 600s，上限 3600s）")
+    max_llm_calls: int | None = Field(default=None, ge=1, le=200, description="最大 LLM 调用次数软预算（默认 30 次，上限 200 次）")
+    max_tokens: int | None = Field(default=None, ge=1000, le=500_000, description="最大 Token 消耗预算（默认 100,000，上限 500,000）")
+    pre_planned_steps: list[dict[str, str]] | None = Field(default=None, description="预规划排查步骤列表")
+    permission_mode: Literal["request_approval", "full_access"] = Field(
         default="request_approval",
         description="工具权限模式：request_approval (高危命令需人机协同审批) 或 full_access (放行高危，平台硬性禁止拦截)"
     )
-    approved_commands: Optional[List[str]] = Field(default=None, description="预先白名单授权的命令行列表")
-    branch_from_session_id: Optional[str] = Field(default=None, description="从指定父会话 ID 切出新排障分支")
-    branch_step_idx: Optional[int] = Field(default=None, description="分叉切入的父检查点步骤序号")
-    branch_title: Optional[str] = Field(default=None, description="分支标题名称")
+    approved_commands: list[str] | None = Field(default=None, description="预先白名单授权的命令行列表")
+    branch_from_session_id: str | None = Field(default=None, max_length=64, description="从指定父会话 ID 切出新排障分支")
+    branch_step_idx: int | None = Field(default=None, ge=1, description="分叉切入的父检查点步骤序号")
+    branch_title: str | None = Field(default=None, max_length=200, description="分支标题名称")
     cancel_on_disconnect: bool = Field(
         default=False,
         description="客户端网络连接断开时是否自动取消任务（默认 False：网络波动或刷新不终止服务端后台任务，需调用 cancel 端点显式取消）",
@@ -143,7 +143,7 @@ class ReActRequest(BaseModel):
 
     @field_validator("images")
     @classmethod
-    def _validate_images(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+    def _validate_images(cls, value: list[str] | None) -> list[str] | None:
         """限制单张图片的 data URL 体积，避免超大 base64 撑爆内存与 Token 预算"""
         if not value:
             return value
@@ -156,10 +156,19 @@ class ReActRequest(BaseModel):
                 )
         return value
 
+    @model_validator(mode="after")
+    def _validate_branch(self) -> "ReActRequest":
+        """分叉来源与切入点必须成对出现，避免分叉意图被静默忽略"""
+        if self.branch_from_session_id and self.branch_step_idx is None:
+            raise ValueError("指定 branch_from_session_id 时必须同时提供 branch_step_idx")
+        if self.branch_step_idx is not None and not self.branch_from_session_id:
+            raise ValueError("指定 branch_step_idx 时必须同时提供 branch_from_session_id")
+        return self
+
 
 class ReActCancelRequest(BaseModel):
     """ReAct 任务主动取消请求 DTO"""
-    session_id: Optional[str] = Field(default=None, description="待取消的会话/任务 ID")
+    session_id: str | None = Field(default=None, description="待取消的会话/任务 ID")
 
 
 class ReActSteerRequest(BaseModel):
@@ -172,21 +181,21 @@ class ReActApprovalRequest(BaseModel):
     """ReAct 人机协同审批决断 DTO"""
     approval_id: str = Field(..., description="待审批任务全局唯一 ID")
     approved: bool = Field(..., description="是否批准执行该高危命令")
-    scope: Optional[Literal["once", "session"]] = Field(default="once", description="授权范围：once 仅本次, session 当前会话同类放行")
+    scope: Literal["once", "session"] | None = Field(default="once", description="授权范围：once 仅本次, session 当前会话同类放行")
 
 
 class ChatMessageDTO(BaseModel):
-    id: Optional[int] = None
+    id: int | None = None
     role: str
     content: str
-    tool_name: Optional[str] = None
-    priority: Optional[str] = None
-    token_count: Optional[int] = 0
+    tool_name: str | None = None
+    priority: str | None = None
+    token_count: int | None = 0
     created_at: datetime
 
 
 class ChatMilestoneDTO(BaseModel):
-    id: Optional[int] = None
+    id: int | None = None
     session_id: str
     type: str
     content: str
@@ -195,9 +204,12 @@ class ChatMilestoneDTO(BaseModel):
 
 class AgentSessionSummaryResponse(BaseModel):
     session_id: str
-    id: Optional[str] = None
+    id: str | None = None
     host_id: str
-    agent_id: Optional[str] = None
+    agent_id: str | None = None
+    parent_session_id: str | None = None
+    branch_step: int | None = None
+    is_branch: bool = False
     title: str
     message_count: int
     created_at: datetime
@@ -206,45 +218,32 @@ class AgentSessionSummaryResponse(BaseModel):
 
 class AgentSessionDetailResponse(BaseModel):
     session_id: str
-    id: Optional[str] = None
+    id: str | None = None
     host_id: str
-    agent_id: Optional[str] = None
+    agent_id: str | None = None
+    parent_session_id: str | None = None
+    branch_step: int | None = None
+    is_branch: bool = False
     title: str
     message_count: int
-    messages: List[ChatMessageDTO]
-    milestones: List[ChatMilestoneDTO] = Field(default_factory=list)
+    messages: list[ChatMessageDTO]
+    milestones: list[ChatMilestoneDTO] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
 
 class CreateAgentSessionRequest(BaseModel):
-    title: Optional[str] = Field(default="新会话", description="会话标题")
-    user_id: Optional[str] = Field(default="default", description="用户 ID")
-
-
-class StepAnalyzeRequest(BaseModel):
-    """单步执行终端回显分析请求 DTO"""
-    step_number: int = Field(default=1, description="当前步骤序号")
-    step_title: Optional[str] = Field(default="执行指令", description="当前步骤简述")
-    command: str = Field(..., description="当前步骤执行的 Shell 命令")
-    terminal_snapshot: str = Field(default="", description="命令执行后的终端回显输出快照")
-
-
-class StepAnalyzeResponse(BaseModel):
-    """单步执行终端回显分析响应 DTO"""
-    step_number: int
-    command: str
-    analysis: str
-    is_normal: bool
+    title: str | None = Field(default="新会话", description="会话标题")
+    user_id: str | None = Field(default=None, description="用户 ID，缺省继承所属主机")
 
 
 class CoreMemoryResponse(BaseModel):
-    id: Optional[int]
+    id: int | None
     user_id: str
     scope: str
     category: str
     title: str
-    keywords: Optional[str]
+    keywords: str | None
     content: str
     priority: int
     use_count: int
@@ -253,13 +252,13 @@ class CoreMemoryResponse(BaseModel):
 
 
 class LongTermMemoryResponse(BaseModel):
-    id: Optional[int] = None
+    id: int | None = None
     user_id: str
-    session_id: Optional[str] = None
+    session_id: str | None = None
     memory_type: str
     memory_key: str
     content: str
-    keywords: Optional[str] = None
+    keywords: str | None = None
     confidence: float
     hit_count: int
     created_at: datetime
@@ -269,8 +268,8 @@ class LongTermMemoryResponse(BaseModel):
 class CreateCoreMemoryRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200, description="记忆标题")
     content: str = Field(..., min_length=1, description="记忆正文")
-    category: Optional[str] = Field(default="Rule", description="分类: Rule/Preference/Decision/Correction/Fact")
-    scope: Optional[str] = Field(default="user", description="作用域: user/session")
-    keywords: Optional[str] = Field(default=None, description="关键词(逗号分隔)")
-    priority: Optional[int] = Field(default=3, ge=1, le=5, description="优先级 1-5")
-    user_id: Optional[str] = Field(default="default", description="用户 ID")
+    category: str | None = Field(default="Rule", description="分类: Rule/Preference/Decision/Correction/Fact")
+    scope: str | None = Field(default="user", description="作用域: user/session")
+    keywords: str | None = Field(default=None, description="关键词(逗号分隔)")
+    priority: int | None = Field(default=3, ge=1, le=5, description="优先级 1-5")
+    user_id: str | None = Field(default="default", description="用户 ID")

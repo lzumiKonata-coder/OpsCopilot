@@ -11,7 +11,7 @@
 from dataclasses import asdict, dataclass, field
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("smartops.application.session_tree")
 
@@ -23,10 +23,10 @@ class SessionCheckpointInfo:
     session_id: str
     step_idx: int = 1
     node_name: str = ""
-    node_next: List[str] = field(default_factory=list)
+    node_next: list[str] = field(default_factory=list)
     step_title: str = ""
     title: str = ""
-    command: Optional[str] = None
+    command: str | None = None
     thought: str = ""
     observation: str = ""
     reflection: str = ""
@@ -35,7 +35,7 @@ class SessionCheckpointInfo:
     has_final_answer: bool = False
     created_at: float = field(default_factory=time.time)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         if not d.get("title") and d.get("step_title"):
             d["title"] = d["step_title"]
@@ -48,13 +48,13 @@ class SessionCheckpointInfo:
 class SessionTreeNode:
     """会话树节点"""
     session_id: str
-    parent_session_id: Optional[str] = None
-    branch_point_step: Optional[int] = None
+    parent_session_id: str | None = None
+    branch_point_step: int | None = None
     title: str = "根会话"
     created_at: float = field(default_factory=time.time)
-    children: List["SessionTreeNode"] = field(default_factory=list)
+    children: list["SessionTreeNode"] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "session_id": self.session_id,
             "parent_session_id": self.parent_session_id,
@@ -73,16 +73,16 @@ class SessionTreeManager:
 
     def __init__(self):
         # parent_id -> list of child branch_session_ids
-        self._branches: Dict[str, List[str]] = {}
+        self._branches: dict[str, list[str]] = {}
         # session_id -> metadata
-        self._metadata: Dict[str, Dict[str, Any]] = {}
+        self._metadata: dict[str, dict[str, Any]] = {}
 
     def register_session(
         self,
         session_id: str,
         title: str = "排障会话",
-        parent_session_id: Optional[str] = None,
-        branch_point_step: Optional[int] = None,
+        parent_session_id: str | None = None,
+        branch_point_step: int | None = None,
     ) -> None:
         """注册会话及其父子关系"""
         if session_id not in self._metadata:
@@ -105,7 +105,7 @@ class SessionTreeManager:
         parent_session_id: str,
         branch_session_id: str,
         branch_point_step: int,
-        branch_title: Optional[str] = None,
+        branch_title: str | None = None,
     ) -> None:
         """注册新分叉分支"""
         parent_meta = self._metadata.get(parent_session_id, {})
@@ -118,7 +118,7 @@ class SessionTreeManager:
             branch_point_step=branch_point_step,
         )
 
-    def get_branches(self, session_id: str) -> List[Dict[str, Any]]:
+    def get_branches(self, session_id: str) -> list[dict[str, Any]]:
         """获取指定会话直接分叉出的子分支列表"""
         child_ids = self._branches.get(session_id, [])
         return [self._metadata[cid] for cid in child_ids if cid in self._metadata]
@@ -131,7 +131,7 @@ class SessionTreeManager:
             if session_id in children:
                 children.remove(session_id)
 
-    def get_tree(self, root_session_id: str) -> Dict[str, Any]:
+    def get_tree(self, root_session_id: str) -> dict[str, Any]:
         """获取从 root_session_id 起始的完整分支拓扑树"""
         root_meta = self._metadata.get(root_session_id, {
             "session_id": root_session_id,
@@ -168,11 +168,11 @@ class SessionTreeManager:
 
     @staticmethod
     def fork_state_for_branch(
-        parent_state: Dict[str, Any],
+        parent_state: dict[str, Any],
         branch_session_id: str,
         branch_point_step: int,
-        new_prompt: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        new_prompt: str | None = None,
+    ) -> dict[str, Any]:
         """
         根据父会话在 branch_point_step 步骤的状态快照，派生分支初始状态：
         1. 仅保留前序 1..branch_point_step 步的执行记录与推演历史事实；
@@ -187,7 +187,7 @@ class SessionTreeManager:
         trimmed_steps = executed_steps[:branch_point_step]
         trimmed_history = react_history[:branch_point_step]
 
-        forked: Dict[str, Any] = {
+        forked: dict[str, Any] = {
             "session_id": branch_session_id,
             "host": parent_state.get("host"),
             "user_prompt": new_prompt or parent_state.get("user_prompt", ""),
@@ -199,6 +199,7 @@ class SessionTreeManager:
             "current_command": None,
             "current_thought": f"从父会话分叉（切入点：第 {branch_point_step} 步），开始新假设分支推演。",
             "current_tool_name": None,
+            "current_tool_call_id": None,
             "current_tool_args": None,
             "current_step_title": f"分支步骤 {len(trimmed_steps) + 1}",
             "current_observation": "",

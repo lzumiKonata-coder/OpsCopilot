@@ -1,7 +1,7 @@
 """应用层端口 - SSH 通信与交互式终端契约"""
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from domain.entities import Command, ExecutionResult, SSHConnection
 
@@ -108,7 +108,7 @@ class ISSHTerminalSessionManager(ABC):
         pass
 
     @abstractmethod
-    def get_recent_buffer(self, identifier: str) -> Optional[str]:
+    def get_recent_buffer(self, identifier: str) -> str | None:
         """获取目标主机活跃终端最近捕获的屏幕回显快照"""
         pass
 
@@ -118,10 +118,10 @@ class ISSHTerminalSessionManager(ABC):
         identifier: str,
         command: str,
         wait_seconds: float = 1.6,
-        idle_timeout: Optional[float] = None,
-        max_timeout: Optional[float] = None,
-        cancel_check: Optional[Callable[[], Any]] = None,
-    ) -> Optional[str]:
+        idle_timeout: float | None = None,
+        max_timeout: float | None = None,
+        cancel_check: Callable[[], Any] | None = None,
+    ) -> str | None:
         """
         向目标主机的活跃终端输入指令并等待捕获回显文本；若未连接终端则返回 None。
         实现方应在注入前等待终端回到空闲提示符、注入后优先等待提示符回归，

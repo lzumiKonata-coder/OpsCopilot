@@ -5,7 +5,7 @@ SmartOps OpsAgent Web SSE 与会话 REST 端点测试
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from adapter.web.dependencies import get_llm_client
+from adapter.web.factory import get_llm_client
 from adapter.web.main import app
 from tests.fakes.helpers import MockLLMClient
 

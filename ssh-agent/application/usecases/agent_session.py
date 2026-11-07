@@ -1,7 +1,7 @@
 """应用层 - Agent 会话生命周期用例 (chat_session)"""
 
 import logging
-from typing import Any, List, Optional
+from typing import Any
 
 from application.ports import IChatSessionRepository, ISSHConnectionRepository
 from domain.entities import ChatSession
@@ -17,13 +17,13 @@ class CreateAgentSessionUseCase:
         self.session_repo = session_repo
         self.host_repo = host_repo
 
-    async def execute(self, host_identifier: str, title: str = "新会话", user_id: str = "default") -> ChatSession:
+    async def execute(self, host_identifier: str, title: str = "新会话", user_id: str | None = None) -> ChatSession:
         host = await self.host_repo.get_by_identifier(host_identifier)
         if not host:
             raise EntityNotFoundError(f"Host '{host_identifier}' not found.")
         new_session = ChatSession(
             agent_id=host.connection_id,
-            user_id=user_id,
+            user_id=user_id or host.user_id,
             title=title or "新会话",
             messages=[],
         )
@@ -37,7 +37,7 @@ class ListAgentSessionsUseCase:
         self.session_repo = session_repo
         self.host_repo = host_repo
 
-    async def execute(self, host_identifier: str, limit: int = 50) -> List[ChatSession]:
+    async def execute(self, host_identifier: str, limit: int = 50) -> list[ChatSession]:
         host = await self.host_repo.get_by_identifier(host_identifier)
         if not host:
             raise EntityNotFoundError(f"Host '{host_identifier}' not found.")
@@ -50,7 +50,7 @@ class GetAgentSessionUseCase:
     def __init__(self, session_repo: IChatSessionRepository):
         self.session_repo = session_repo
 
-    async def execute(self, session_id: str) -> Optional[ChatSession]:
+    async def execute(self, session_id: str) -> ChatSession | None:
         return await self.session_repo.get_by_id(session_id)
 
 
@@ -60,8 +60,8 @@ class DeleteAgentSessionUseCase:
     def __init__(
         self,
         session_repo: IChatSessionRepository,
-        checkpointer: Optional[Any] = None,
-        session_tree_manager: Optional[Any] = None,
+        checkpointer: Any | None = None,
+        session_tree_manager: Any | None = None,
     ):
         self.session_repo = session_repo
         self.checkpointer = checkpointer

@@ -50,6 +50,12 @@ class ChatSessionPO(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, comment="会话ID")
     agent_id: Mapped[str] = mapped_column(String(64), nullable=False, comment="智能体ID")
+    parent_session_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, comment="父会话ID（分叉来源，根会话为空）"
+    )
+    branch_step: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="分叉切入点步骤（根会话为空）"
+    )
     user_id: Mapped[str] = mapped_column(String(64), nullable=False, default="default", comment="用户ID")
     title: Mapped[str | None] = mapped_column(String(200), nullable=True, default="新会话", comment="会话标题")
     created_at: Mapped[datetime] = mapped_column(
@@ -106,7 +112,7 @@ class ChatMilestonePO(Base):
 
     id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True, comment="自增主键")
     session_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, comment="会话ID")
-    type: Mapped[str] = mapped_column(String(30), nullable=False, comment="类型: TASK_CHANGE/ERROR/DECISION/...")
+    type: Mapped[str] = mapped_column(String(30), nullable=False, comment="类型: DIAGNOSIS/ROOT_CAUSE/TASK_CHANGE/ERROR/DECISION")
     content: Mapped[str | None] = mapped_column(Text, nullable=True, comment="内容摘要")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

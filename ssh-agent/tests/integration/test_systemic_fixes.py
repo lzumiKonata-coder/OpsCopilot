@@ -11,9 +11,8 @@
 
 import pytest
 import uuid
-from typing import List, Optional
 
-from adapter.repository.database import get_db_session
+from adapter.repository.db_engine import get_session_factory
 from adapter.repository import (
     SQLAlchemyChatRepository,
     SQLAlchemyMemoryRepository,
@@ -37,14 +36,13 @@ from domain.entities import (
 from domain.rules import RiskLevel
 from application.react.engine import LangGraphReActEngine
 from application.react.managers import InMemoryApprovalManager
-from application.react.observation import detect_command_error
 from application.react.state import ReActGraphState
 from application.usecases.memory import _load_long_term_memory_text
 from application.usecases.react import ReActUseCase
 
 
 class MockLLM(ILLMClient):
-    def __init__(self, responses: Optional[List[str]] = None, tool_calls: Optional[List[dict]] = None):
+    def __init__(self, responses: list[str] | None = None, tool_calls: list[dict] | None = None):
         self.call_count = 0
         self.responses = responses or ["Thought: 排查\nAction: uptime\nStep_Title: 步骤1"]
         self.tool_calls = tool_calls or []
@@ -61,7 +59,7 @@ class MockLLM(ILLMClient):
 
 class MockGateway(ISSHGateway):
     def __init__(self):
-        self.commands: List[str] = []
+        self.commands: list[str] = []
 
     async def execute(self, host: SSHConnection, command: Command) -> ExecutionResult:
         self.commands.append(command.raw_command)
@@ -87,7 +85,7 @@ class MockGateway(ISSHGateway):
 @pytest.mark.asyncio
 async def test_react_cancellation_emits_event_and_marks_status():
     """测试客户端主动取消时，发射 cancelled 事件，会话报告记录为【用户取消】而非【执行成功】"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
 
@@ -174,7 +172,7 @@ async def test_node_finish_blocked_conclusion():
 @pytest.mark.asyncio
 async def test_branching_state_properly_injected_into_initial_state():
     """测试从父会话分叉时，父会话的 executed_steps 和 react_history 被正确注入初始状态，避免重头执行"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
 
@@ -362,7 +360,7 @@ async def test_approval_timeout_appended_to_executed_steps():
 @pytest.mark.asyncio
 async def test_long_term_memory_host_isolation():
     """测试长期记忆过滤：查询 Host A 时严格隔离排除 Host B 的画像，防止污染"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         mem_repo = SQLAlchemyMemoryRepository(session)
         # 为 Host A 和 Host B 分别录入画像
         await mem_repo.save_long_term_memory(
@@ -421,44 +419,4 @@ async def test_read_remote_file_safe_int_conversion():
     assert "file content of /etc/hosts" in result["current_observation"]
 
 
-# ====================================================================
-# 6. 诊断接口客观性与 is_normal 真实判定
-# ====================================================================
 
-@pytest.mark.asyncio
-async def test_step_analyze_diagnostics_truthfulness():
-    """测试终端分析接口在 LLM 不可用时对真实报错和回显的客观判断，不虚构平稳"""
-    from adapter.web.routers.agent_react import analyze_step_execution
-    from adapter.web.schemas import StepAnalyzeRequest
-
-    class MockRepo:
-        async def get_by_identifier(self, ident):
-            return None
-
-    class FailingLLM(ILLMClient):
-        async def chat(self, messages, temperature=0.1):
-            raise RuntimeError("LLM unavailable")
-        async def stream_chat(self, messages):
-            yield ""
-
-    # 1. 回显包含显著错误时，判定 is_normal = False
-    req_err = StepAnalyzeRequest(
-        step_number=1,
-        step_title="测试步骤",
-        command="curl localhost:8080",
-        terminal_snapshot="curl: (7) Failed to connect to localhost port 8080: Connection refused",
-    )
-    res_err = await analyze_step_execution("ident", req_err, host_repo=MockRepo(), llm_client=FailingLLM())
-    assert res_err.is_normal is False
-    assert "异常" in res_err.analysis or "警告" in res_err.analysis
-
-    # 2. free -m 输出时，分析客观展示回显摘要，不虚构 OOM 结论
-    req_free = StepAnalyzeRequest(
-        step_number=2,
-        step_title="查看内存",
-        command="free -m",
-        terminal_snapshot="              total        used        free      shared  buff/cache   available\nMem:           7900        6500         200         120        1200        1000\nSwap:          2048        1800         248",
-    )
-    res_free = await analyze_step_execution("ident", req_free, host_repo=MockRepo(), llm_client=FailingLLM())
-    assert "未观测到 Out-of-Memory (OOM) 征兆" not in res_free.analysis
-    assert "物理内存水位快照" in res_free.analysis

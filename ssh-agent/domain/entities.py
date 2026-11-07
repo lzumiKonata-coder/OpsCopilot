@@ -5,7 +5,7 @@
 """
 
 from datetime import datetime, timezone
-from typing import Any, List, Literal, Optional
+from typing import Any, Literal
 import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -74,7 +74,7 @@ class AuditDecision(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     risk_level: RiskLevel = Field(..., description="安全风险评定等级")
-    hit_rules: List[str] = Field(default_factory=list, description="命中的安全规则标识列表")
+    hit_rules: list[str] = Field(default_factory=list, description="命中的安全规则标识列表")
     reason: str = Field(default="", description="审查裁定详情或拦截原因描述")
     requires_manual_review: bool = Field(
         default=False,
@@ -113,10 +113,10 @@ class SSHConnectionConfig(BaseModel):
 
     connect_timeout: int = Field(default=10, ge=1, le=60, description="连接超时时间(秒)")
     keepalive_interval: int = Field(default=60, ge=0, le=3600, description="保活间隔(秒)")
-    startup_command: Optional[str] = Field(default=None, description="连接后执行的启动命令")
+    startup_command: str | None = Field(default=None, description="连接后执行的启动命令")
     compression: int = Field(default=0, description="是否压缩: 0-否, 1-是")
     strict_host_key_check: int = Field(default=0, description="严格主机密钥检查: 0-否, 1-是")
-    known_hosts: Optional[str] = Field(default=None, description="已知主机密钥列表")
+    known_hosts: str | None = Field(default=None, description="已知主机密钥列表")
 
 
 # ====================================================================
@@ -136,9 +136,9 @@ class SSHConnection(BaseModel):
     port: int = Field(default=22, ge=1, le=65535, description="端口号")
     username: str = Field(..., min_length=1, max_length=128, description="用户名")
     auth_type: AuthType = Field(default=AuthType.PASSWORD, description="认证类型: 1-密码, 2-私钥")
-    password: Optional[str] = Field(default=None, description="密码(加密存储)")
-    private_key: Optional[str] = Field(default=None, description="私钥内容(加密存储)")
-    passphrase: Optional[str] = Field(default=None, description="私钥口令(可选)")
+    password: str | None = Field(default=None, description="密码(加密存储)")
+    private_key: str | None = Field(default=None, description="私钥内容(加密存储)")
+    passphrase: str | None = Field(default=None, description="私钥口令(可选)")
     encrypted: int = Field(default=1, description="是否加密: 0-否, 1-是")
     status: int = Field(default=0, description="连接状态: 0-未连接, 1-已连接, 2-连接中, 3-连接失败")
     user_id: str = Field(default="default", description="所属用户ID")
@@ -192,18 +192,18 @@ class SSHSessionLog(BaseModel):
     """
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    id: Optional[int] = Field(default=None, description="自增主键")
+    id: int | None = Field(default=None, description="自增主键")
     session_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="会话唯一标识(UUID)")
     connection_id: str = Field(..., description="关联的连接 ID")
     user_id: str = Field(default="default", description="用户 ID")
     status: int = Field(default=0, description="会话状态: 0-打开, 1-关闭")
-    remote_addr: Optional[str] = Field(default=None, description="远程客户端 IP 地址")
+    remote_addr: str | None = Field(default=None, description="远程客户端 IP 地址")
     start_time: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="会话开始时间"
     )
-    end_time: Optional[datetime] = Field(default=None, description="会话结束时间")
-    error_msg: Optional[str] = Field(default=None, description="异常报错信息")
+    end_time: datetime | None = Field(default=None, description="会话结束时间")
+    error_msg: str | None = Field(default=None, description="异常报错信息")
 
 
 # ====================================================================
@@ -216,12 +216,12 @@ class ChatMessage(BaseModel):
     """
     model_config = ConfigDict(frozen=True)
 
-    id: Optional[int] = Field(default=None, description="自增主键")
-    session_id: Optional[str] = Field(default=None, description="关联的会话 ID")
+    id: int | None = Field(default=None, description="自增主键")
+    session_id: str | None = Field(default=None, description="关联的会话 ID")
     role: Literal["system", "user", "assistant", "tool"] = Field(..., description="角色: user/assistant/tool/system")
     content: str = Field(..., description="消息内容")
-    tool_name: Optional[str] = Field(default=None, description="工具名称")
-    tool_call_id: Optional[str] = Field(default=None, description="工具调用 ID")
+    tool_name: str | None = Field(default=None, description="工具名称")
+    tool_call_id: str | None = Field(default=None, description="工具调用 ID")
     priority: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] = Field(default="MEDIUM", description="优先级")
     token_count: int = Field(default=0, description="预估 token 数")
     created_at: datetime = Field(
@@ -237,9 +237,9 @@ class ChatMilestone(BaseModel):
     """
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    id: Optional[int] = Field(default=None, description="自增主键")
+    id: int | None = Field(default=None, description="自增主键")
     session_id: str = Field(..., description="关联会话 ID")
-    type: str = Field(..., description="里程碑类型: TASK_CHANGE/ERROR/DECISION/ROOT_CAUSE")
+    type: str = Field(..., description="里程碑类型: DIAGNOSIS/ROOT_CAUSE/TASK_CHANGE/ERROR/DECISION")
     content: str = Field(..., description="内容摘要")
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -255,6 +255,8 @@ class ChatSession(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="会话全局唯一 ID")
     agent_id: str = Field(..., description="智能体标识 (主机 ID 或专用 Agent ID)")
+    parent_session_id: str | None = Field(default=None, description="父会话 ID (分叉来源，根会话为空)")
+    branch_step: int | None = Field(default=None, description="分叉切入点步骤 (根会话为空)")
     user_id: str = Field(default="default", description="用户 ID")
     title: str = Field(default="新会话", description="会话标题")
     message_count: int = Field(default=0, description="消息数量")
@@ -266,8 +268,8 @@ class ChatSession(BaseModel):
         default_factory=lambda: datetime.now(timezone.utc),
         description="会话最后活跃时间"
     )
-    messages: List[ChatMessage] = Field(default_factory=list, description="对话历史消息序列")
-    milestones: List[ChatMilestone] = Field(default_factory=list, description="关键里程碑序列")
+    messages: list[ChatMessage] = Field(default_factory=list, description="对话历史消息序列")
+    milestones: list[ChatMilestone] = Field(default_factory=list, description="关键里程碑序列")
 
     @model_validator(mode="before")
     @classmethod
@@ -283,8 +285,8 @@ class ChatSession(BaseModel):
         self,
         role: Literal["system", "user", "assistant", "tool"],
         content: str,
-        tool_name: Optional[str] = None,
-        tool_call_id: Optional[str] = None,
+        tool_name: str | None = None,
+        tool_call_id: str | None = None,
         priority: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] = "MEDIUM",
         token_count: int = 0,
     ) -> ChatMessage:
@@ -310,7 +312,7 @@ class ChatSession(BaseModel):
         self.milestones.append(ms)
         return ms
 
-    def get_recent_history(self, limit: int = 10) -> List[ChatMessage]:
+    def get_recent_history(self, limit: int = 10) -> list[ChatMessage]:
         return self.messages[-limit:]
 
 
@@ -325,7 +327,7 @@ class CoreMemory(BaseModel):
     """
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    id: Optional[int] = Field(default=None, description="自增主键")
+    id: int | None = Field(default=None, description="自增主键")
     user_id: str = Field(default="default", description="用户 ID")
     scope: Literal["user", "session"] = Field(default="user", description="作用域: user/session")
     category: Literal["Rule", "Preference", "Decision", "Correction", "Fact"] = Field(
@@ -333,10 +335,10 @@ class CoreMemory(BaseModel):
         description="分类: Rule/Preference/Decision/Correction/Fact"
     )
     title: str = Field(..., min_length=1, max_length=200, description="记忆标题")
-    keywords: Optional[str] = Field(default=None, max_length=500, description="关键词(逗号分隔)")
+    keywords: str | None = Field(default=None, max_length=500, description="关键词(逗号分隔)")
     content: str = Field(..., description="记忆正文")
     priority: int = Field(default=3, ge=1, le=5, description="优先级 1-5 (越高越重要)")
-    source_session_id: Optional[str] = Field(default=None, description="来源会话 ID")
+    source_session_id: str | None = Field(default=None, description="来源会话 ID")
     use_count: int = Field(default=1, description="使用/引用次数")
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -355,14 +357,14 @@ class LongTermMemory(BaseModel):
     """
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    id: Optional[int] = Field(default=None, description="自增主键")
+    id: int | None = Field(default=None, description="自增主键")
     user_id: str = Field(..., description="用户 ID")
-    session_id: Optional[str] = Field(default=None, description="来源会话 ID")
+    session_id: str | None = Field(default=None, description="来源会话 ID")
     memory_type: str = Field(..., max_length=50, description="记忆类型 (如 ServerEnv, NetworkTopo, Habit)")
     memory_key: str = Field(..., max_length=128, description="去重键")
     content: str = Field(..., description="记忆内容")
-    keywords: Optional[str] = Field(default=None, max_length=512, description="关键词集合")
-    source_role: Optional[str] = Field(default=None, description="来源角色")
+    keywords: str | None = Field(default=None, max_length=512, description="关键词集合")
+    source_role: str | None = Field(default=None, description="来源角色")
     confidence: float = Field(default=0.50, ge=0.0, le=1.0, description="置信度")
     hit_count: int = Field(default=1, description="命中/更新次数")
     created_at: datetime = Field(

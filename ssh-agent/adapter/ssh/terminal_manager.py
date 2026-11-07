@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 import logging
 import re
 import time
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable
 
 from application.ports import ISSHTerminalSessionManager
 
@@ -60,12 +60,12 @@ def _clean_terminal_text(raw: str) -> str:
     3. 剥除除 \n 与 \t 之外的其余控制字符。
     """
     stripped = ANSI_ESCAPE_RE.sub("", raw)
-    lines: List[str] = []
+    lines: list[str] = []
     for seg in stripped.split("\n"):
         if "\r" not in seg:
             lines.append(seg)
             continue
-        buf: List[str] = []
+        buf: list[str] = []
         for part in seg.split("\r"):
             if not buf:
                 buf = list(part)
@@ -83,9 +83,9 @@ def _clean_terminal_text(raw: str) -> str:
 class ActiveTerminalSession:
     identifier: str
     process: any
-    aliases: Set[str] = field(default_factory=set)
-    recent_chunks: List[str] = field(default_factory=list)
-    active_command_chunks: Optional[List[str]] = None
+    aliases: set[str] = field(default_factory=set)
+    recent_chunks: list[str] = field(default_factory=list)
+    active_command_chunks: list[str] | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     last_active_time: float = field(default_factory=time.time)
     last_output_time: float = field(default_factory=time.monotonic)
@@ -129,10 +129,10 @@ class InMemorySSHTerminalSessionManager(ISSHTerminalSessionManager):
     """
 
     def __init__(self):
-        self._sessions: Dict[str, ActiveTerminalSession] = {}
-        self._alias_map: Dict[str, str] = {}
+        self._sessions: dict[str, ActiveTerminalSession] = {}
+        self._alias_map: dict[str, str] = {}
 
-    def register(self, identifier: str, process: any, aliases: Optional[List[str]] = None) -> None:
+    def register(self, identifier: str, process: any, aliases: list[str] | None = None) -> None:
         """注册当前建立的 WebSocket PTY 进程"""
         alias_set = set(aliases or [])
         alias_set.add(identifier)
@@ -168,7 +168,7 @@ class InMemorySSHTerminalSessionManager(ISSHTerminalSessionManager):
         primary = self._alias_map.get(identifier, identifier)
         return primary in self._sessions
 
-    def get_recent_buffer(self, identifier: str) -> Optional[str]:
+    def get_recent_buffer(self, identifier: str) -> str | None:
         """获取目标主机活跃终端最近捕获的屏幕回显快照"""
         primary = self._alias_map.get(identifier, identifier)
         session = self._sessions.get(primary)
@@ -181,10 +181,10 @@ class InMemorySSHTerminalSessionManager(ISSHTerminalSessionManager):
         identifier: str,
         command: str,
         wait_seconds: float = 1.6,
-        idle_timeout: Optional[float] = None,
-        max_timeout: Optional[float] = None,
-        cancel_check: Optional[Callable[[], Any]] = None,
-    ) -> Optional[str]:
+        idle_timeout: float | None = None,
+        max_timeout: float | None = None,
+        cancel_check: Callable[[], Any] | None = None,
+    ) -> str | None:
         """
         向活跃终端注入待执行指令并等待捕获真实输出回显：
         - 注入前等待终端回到空闲 Shell 提示符（防止与未完成的输出/半行内容拼接错位）；
@@ -269,7 +269,7 @@ class InMemorySSHTerminalSessionManager(ISSHTerminalSessionManager):
     @staticmethod
     async def _wait_for_idle_prompt(
         session: "ActiveTerminalSession",
-        idle_timeout: Optional[float],
+        idle_timeout: float | None,
     ) -> bool:
         """轮询等待终端缓冲区末尾出现空闲 Shell 提示符；超时降级为直接注入并返回 False"""
         timeout = IDLE_WAIT_SECONDS if idle_timeout is None else idle_timeout
@@ -292,8 +292,8 @@ class InMemorySSHTerminalSessionManager(ISSHTerminalSessionManager):
         min_wait_seconds: float,
         timeout: float = SETTLE_MAX_WAIT_SECONDS,
         command: str = "",
-        hard_max_timeout: Optional[float] = None,
-        cancel_check: Optional[Callable[[], Any]] = None,
+        hard_max_timeout: float | None = None,
+        cancel_check: Callable[[], Any] | None = None,
     ) -> bool:
         """
         等待命令回显稳定：

@@ -6,9 +6,7 @@ import asyncio
 import time
 import uuid
 import pytest
-from typing import List, Optional
 
-from adapter.repository.database import get_db_session
 from adapter.repository import (
     SQLAlchemyChatRepository,
     SQLAlchemySSHConnectionRepository,
@@ -23,7 +21,7 @@ from application.usecases.react import ReActUseCase
 
 
 class MockLLM(ILLMClient):
-    def __init__(self, responses: Optional[List[str]] = None):
+    def __init__(self, responses: list[str] | None = None):
         self.call_count = 0
         self.responses = responses or ["Thought: 探测\nAction: uptime\nStep_Title: 步骤1"]
 
@@ -39,7 +37,7 @@ class MockLLM(ILLMClient):
 
 class MockGateway(ISSHGateway):
     def __init__(self, fixed_output: str = "default output"):
-        self.commands: List[str] = []
+        self.commands: list[str] = []
         self.fixed_output = fixed_output
 
     async def execute(self, host: SSHConnection, command: Command) -> ExecutionResult:

@@ -2,7 +2,6 @@
 
 import logging
 import re
-from typing import Dict, List, Optional
 
 from utils.text import TokenBudgetEstimator, smart_truncate
 
@@ -20,10 +19,10 @@ class SessionCompactor:
 
     def __init__(
         self,
-        max_recent_turns: Optional[int] = None,
+        max_recent_turns: int | None = None,
         max_summary_chars: int = 500,
-        max_session_tokens: Optional[int] = None,
-        model_name: Optional[str] = None,
+        max_session_tokens: int | None = None,
+        model_name: str | None = None,
     ):
         profile = resolve_context_profile(model_name)
         self.max_recent_turns = max_recent_turns if max_recent_turns is not None else profile["max_recent_turns"]
@@ -33,16 +32,16 @@ class SessionCompactor:
 
     def compact_session_history(
         self,
-        session_history: List[Dict[str, str]],
+        session_history: list[dict[str, str]],
         current_user_prompt: str,
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         """
         清洗并压缩多轮会话历史：
         1. 过滤空消息与与当前输入重复的提问；
         2. 基于 Token 预算与轮次切分旧会话与最近活跃轮次；
         3. 将旧轮次提炼为结构化前序运维小结。
         """
-        cleaned: List[Dict[str, str]] = []
+        cleaned: list[dict[str, str]] = []
         clean_curr = (current_user_prompt or "").strip()
 
         for m in session_history:
@@ -85,7 +84,7 @@ class SessionCompactor:
         # 提取前序轮次关键点（语义过滤，提取核心实体与动作）
         compacted_entry = None
         if older:
-            summaries: List[str] = []
+            summaries: list[str] = []
             for msg in older:
                 r = msg.get("role", "")
                 c = msg.get("content", "")

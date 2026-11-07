@@ -8,7 +8,7 @@
 
 import asyncio
 import time
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator
 
 MAX_BUFFERED_EVENTS = 2000
 FINISHED_RETENTION_SECONDS = 120.0
@@ -19,16 +19,16 @@ class RunEventBroker:
 
     def __init__(self, key: str):
         self.key = key
-        self._events: List[Dict[str, Any]] = []
+        self._events: list[dict[str, Any]] = []
         self._subscribers: set[asyncio.Queue] = set()
         self._finished = False
-        self.finished_at: Optional[float] = None
+        self.finished_at: float | None = None
 
     @property
     def finished(self) -> bool:
         return self._finished
 
-    def publish(self, event: Dict[str, Any]) -> None:
+    def publish(self, event: dict[str, Any]) -> None:
         """缓冲事件并广播给所有在线订阅者"""
         if self._finished:
             return
@@ -48,7 +48,7 @@ class RunEventBroker:
             queue.put_nowait(None)
         self._subscribers.clear()
 
-    async def subscribe(self, after: int = 0) -> AsyncGenerator[Dict[str, Any], None]:
+    async def subscribe(self, after: int = 0) -> AsyncGenerator[dict[str, Any], None]:
         """回放 after 之后的历史事件，随后持续推送新事件，直至任务结束"""
         queue: asyncio.Queue = asyncio.Queue()
         start = max(0, after)
@@ -77,7 +77,7 @@ class RunEventBrokerRegistry:
     """运行期事件总线注册表（按 task_key 索引）"""
 
     def __init__(self):
-        self._brokers: Dict[str, RunEventBroker] = {}
+        self._brokers: dict[str, RunEventBroker] = {}
 
     def create(self, key: str) -> RunEventBroker:
         self._prune()
@@ -85,7 +85,7 @@ class RunEventBrokerRegistry:
         self._brokers[key] = broker
         return broker
 
-    def get(self, key: str) -> Optional[RunEventBroker]:
+    def get(self, key: str) -> RunEventBroker | None:
         self._prune()
         return self._brokers.get(key)
 

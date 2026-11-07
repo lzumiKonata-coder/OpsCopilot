@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from langgraph.types import StreamWriter
 
@@ -23,7 +23,7 @@ logger = logging.getLogger("smartops.application.react.nodes.think")
 
 
 class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
-    async def _node_think(self, state: ReActGraphState, writer: StreamWriter = None) -> Dict[str, Any]:
+    async def _node_think(self, state: ReActGraphState, writer: StreamWriter = None) -> dict[str, Any]:
         """Node 1: Thought 思考推演节点"""
         step_idx = state.get("step_idx", 1)
         host = state["host"]
@@ -62,7 +62,7 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
 
         # 提取用户即时插话/方向纠偏 (Steering Messages)
         session_id = state.get("session_id")
-        steering_texts: List[str] = []
+        steering_texts: list[str] = []
         if getattr(self, "steering_manager", None) and session_id:
             steering_texts.extend(self.steering_manager.pop_steering_messages(session_id))
         if state.get("steering_message"):
@@ -196,7 +196,7 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
 
         current_tool_name = None
         current_tool_args = None
-        plan: Optional[str] = None
+        plan: str | None = None
         if tool_calls:
             first_tool = tool_calls[0]
             invocation = resolve_tool_call(

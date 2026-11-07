@@ -6,12 +6,11 @@ Web 适配层 - SSE 流式响应管道
 import asyncio
 import json
 import logging
-from typing import Optional
 
 from fastapi import HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
-from adapter.bootstrap import container
+from adapter.composition_root import container
 from adapter.web.schemas import AgentChatRequest, ReActRequest
 from application.usecases.chat import ChatWithOpsAgentUseCase
 from application.usecases.react import ReActUseCase
@@ -190,7 +189,7 @@ async def build_react_stream_response(
 
 def build_attach_stream_response(
     identifier: str,
-    session_id: Optional[str],
+    session_id: str | None,
     after: int,
 ) -> StreamingResponse:
     """接续服务端后台运行的排障任务：回放缓冲事件并持续推送新事件"""

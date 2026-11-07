@@ -3,17 +3,14 @@ Web 适配层 - OpsAgent 会话管理、检查点与分支树路由
 涉及 chat_session / chat_message / chat_milestone 及时间旅行能力。
 """
 
-from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from adapter.web.dependencies import (
-    get_agent_session_repository,
+from adapter.web.factory import (
     get_create_agent_session_use_case,
     get_delete_agent_session_use_case,
     get_get_agent_session_use_case,
     get_list_agent_sessions_use_case,
-    get_react_use_case,
 )
 from adapter.web.schemas import (
     AgentSessionDetailResponse,
@@ -22,19 +19,17 @@ from adapter.web.schemas import (
     ChatMilestoneDTO,
     CreateAgentSessionRequest,
 )
-from application.ports import IChatSessionRepository
 from application.usecases.agent_session import (
     CreateAgentSessionUseCase,
     DeleteAgentSessionUseCase,
     GetAgentSessionUseCase,
     ListAgentSessionsUseCase,
 )
-from application.usecases.react import ReActUseCase
 
 router = APIRouter()
 
 
-@router.get("/api/v1/hosts/{identifier}/agent/sessions", response_model=List[AgentSessionSummaryResponse], tags=["OpsAgent Sessions"])
+@router.get("/api/v1/hosts/{identifier}/agent/sessions", response_model=list[AgentSessionSummaryResponse], tags=["OpsAgent Sessions"])
 async def list_agent_sessions(
     identifier: str,
     limit: int = Query(50, ge=1, le=100),
@@ -48,6 +43,9 @@ async def list_agent_sessions(
             id=s.id,
             host_id=s.agent_id,
             agent_id=s.agent_id,
+            parent_session_id=s.parent_session_id,
+            branch_step=s.branch_step,
+            is_branch=bool(s.parent_session_id),
             title=s.title,
             message_count=s.message_count,
             created_at=s.created_at,
@@ -64,12 +62,15 @@ async def create_agent_session(
     use_case: CreateAgentSessionUseCase = Depends(get_create_agent_session_use_case),
 ):
     """为指定受管主机新建一个空会话 (chat_session 表)"""
-    session = await use_case.execute(identifier, title=req.title or "新会话", user_id=req.user_id or "default")
+    session = await use_case.execute(identifier, title=req.title or "新会话", user_id=req.user_id)
     return AgentSessionSummaryResponse(
         session_id=session.id,
         id=session.id,
         host_id=session.agent_id,
         agent_id=session.agent_id,
+        parent_session_id=session.parent_session_id,
+        branch_step=session.branch_step,
+        is_branch=bool(session.parent_session_id),
         title=session.title,
         message_count=session.message_count,
         created_at=session.created_at,
@@ -91,6 +92,9 @@ async def get_agent_session_detail(
         id=session.id,
         host_id=session.agent_id,
         agent_id=session.agent_id,
+        parent_session_id=session.parent_session_id,
+        branch_step=session.branch_step,
+        is_branch=bool(session.parent_session_id),
         title=session.title,
         message_count=session.message_count,
         messages=[
@@ -132,43 +136,5 @@ async def delete_agent_session(
     return {"deleted": True, "session_id": session_id}
 
 
-@router.get("/api/v1/agent/sessions/{session_id}/milestones", response_model=List[ChatMilestoneDTO], tags=["OpsAgent Sessions"])
-async def list_session_milestones(
-    session_id: str,
-    session_repo: IChatSessionRepository = Depends(get_agent_session_repository),
-):
-    """查询指定会话的所有关键里程碑记录 (chat_milestone 表)"""
-    milestones = await session_repo.list_milestones(session_id)
-    return [
-        ChatMilestoneDTO(
-            id=ms.id,
-            session_id=ms.session_id,
-            type=ms.type,
-            content=ms.content,
-            created_at=ms.created_at,
-        )
-        for ms in milestones
-    ]
 
-
-@router.get("/api/v1/hosts/{identifier}/agent/sessions/{session_id}/checkpoints", tags=["OpsAgent Sessions"])
-async def get_session_checkpoints(
-    identifier: str,
-    session_id: str,
-    use_case: ReActUseCase = Depends(get_react_use_case),
-):
-    """时间旅行：查询会话所有历史执行检查点"""
-    checkpoints = await use_case.get_session_checkpoints(session_id)
-    return {"session_id": session_id, "checkpoints": checkpoints}
-
-
-@router.get("/api/v1/hosts/{identifier}/agent/sessions/{session_id}/tree", tags=["OpsAgent Sessions"])
-async def get_session_tree(
-    identifier: str,
-    session_id: str,
-    use_case: ReActUseCase = Depends(get_react_use_case),
-):
-    """查询会话分支树拓扑结构"""
-    tree = use_case.get_session_tree(session_id)
-    return {"session_id": session_id, "tree": tree}
 

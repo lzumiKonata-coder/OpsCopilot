@@ -1,6 +1,6 @@
 """应用层 - ReAct Think 节点：上下文与提示词拼装"""
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Sequence
 
 from application.prompts import REACT_SYSTEM_PROMPT
 from application.react.observation import detect_interactive_prompt, is_empty_observation
@@ -39,16 +39,16 @@ def build_user_prompt(
     history_text: str,
     anti_loop_warning: str,
     has_encountered_error: bool,
-    last_error_detail: Optional[str],
+    last_error_detail: str | None,
     os_family: str,
     is_root: bool,
     react_history: Sequence[Any],
-    executed_steps: List[Dict[str, Any]],
+    executed_steps: list[dict[str, Any]],
     is_plan_confirmed: bool,
     permission_mode: str,
-    steering_texts: List[str],
-    images: List[str],
-) -> Tuple[str, Optional[str]]:
+    steering_texts: list[str],
+    images: list[str],
+) -> tuple[str, str | None]:
     """构建本轮用户提示词，返回 (提示词正文, 终端交互确认提示)"""
     prompt_content = (
         f"【运维排障目标】: {user_prompt}\n\n"
@@ -129,11 +129,11 @@ def build_user_prompt(
 def build_conversation(
     sys_prompt: str,
     prompt_content: str,
-    images: List[str],
-    clean_history: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    images: list[str],
+    clean_history: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """构建本轮对话消息：系统提示 + 历史轮次 + 当前用户消息（含多模态图片块）"""
-    conversation: List[Dict[str, Any]] = [{"role": "system", "content": sys_prompt}]
+    conversation: list[dict[str, Any]] = [{"role": "system", "content": sys_prompt}]
     # 融入多轮历史对话上下文，消除上下文丢失断层并彻底剥离长篇排障报告污染
     if clean_history:
         for m in clean_history:

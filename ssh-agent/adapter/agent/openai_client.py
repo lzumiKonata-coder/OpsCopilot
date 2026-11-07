@@ -8,7 +8,7 @@ import json
 import logging
 import re
 import asyncio
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
+from typing import Any, AsyncGenerator, Callable
 
 import httpx
 
@@ -25,9 +25,9 @@ class OpenAICompatibleLLMClient(ILLMClient):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
-        model: Optional[str] = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
         timeout: float = 60.0,
     ):
         settings = load_settings()
@@ -40,7 +40,7 @@ class OpenAICompatibleLLMClient(ILLMClient):
         self.model = (model or settings.llm_model).strip()
         self.timeout = timeout
 
-    def _generate_fallback_chunks(self, messages: List[Dict[str, Any]]) -> List[str]:
+    def _generate_fallback_chunks(self, messages: list[dict[str, Any]]) -> list[str]:
         user_text = ""
         for msg in reversed(messages):
             if msg.get("role") == "user":
@@ -104,9 +104,9 @@ class OpenAICompatibleLLMClient(ILLMClient):
 
     async def stream_chat(
         self,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.2,
-        tools: Optional[List[Dict[str, Any]]] = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         通过 SSE 流式向大模型发起对话请求，并逐 token / chunk 输出
@@ -121,7 +121,7 @@ class OpenAICompatibleLLMClient(ILLMClient):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
@@ -186,10 +186,10 @@ class OpenAICompatibleLLMClient(ILLMClient):
 
     async def chat(
         self,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.2,
-        tools: Optional[List[Dict[str, Any]]] = None,
-        on_token: Optional[Callable[[str], Any]] = None,
+        tools: list[dict[str, Any]] | None = None,
+        on_token: Callable[[str], Any] | None = None,
     ) -> LLMResponse:
         """
         获取大模型响应，支持提取结构化 Tool Calling；传入 on_token 时启用流式推演
@@ -208,7 +208,7 @@ class OpenAICompatibleLLMClient(ILLMClient):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
@@ -234,9 +234,9 @@ class OpenAICompatibleLLMClient(ILLMClient):
                             logger.error("LLM upstream error HTTP %s: %s", response.status_code, err_text)
                             return LLMResponse(content=f"> **大模型上游接口请求异常 (HTTP {response.status_code})**\n>\n> {err_text}")
 
-                        content_parts: List[str] = []
-                        reasoning_parts: List[str] = []
-                        tool_calls_map: Dict[int, Dict[str, Any]] = {}
+                        content_parts: list[str] = []
+                        reasoning_parts: list[str] = []
+                        tool_calls_map: dict[int, dict[str, Any]] = {}
 
                         async for line in response.aiter_lines():
                             line = line.strip()
@@ -302,11 +302,11 @@ class OpenAICompatibleLLMClient(ILLMClient):
                         full_content = "".join(content_parts) if content_parts else None
                         full_reasoning = "".join(reasoning_parts) if reasoning_parts else None
 
-                        tool_calls: List[ToolCall] = []
+                        tool_calls: list[ToolCall] = []
                         for idx in sorted(tool_calls_map.keys()):
                             tc_info = tool_calls_map[idx]
                             raw_args = "".join(tc_info["arguments_chunks"])
-                            args: Dict[str, Any] = {}
+                            args: dict[str, Any] = {}
                             if raw_args.strip():
                                 try:
                                     args = json.loads(raw_args)
@@ -342,7 +342,7 @@ class OpenAICompatibleLLMClient(ILLMClient):
                 content = msg.get("content")
                 raw_tool_calls = msg.get("tool_calls") or []
 
-                tool_calls: List[ToolCall] = []
+                tool_calls: list[ToolCall] = []
                 for tc in raw_tool_calls:
                     fn = tc.get("function") or {}
                     raw_args = fn.get("arguments", "{}")

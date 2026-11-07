@@ -4,7 +4,7 @@ import asyncio
 from abc import ABC, abstractmethod
 import logging
 import time
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable
 import uuid
 
 from application.react.cancel_context import get_cancel_check
@@ -34,8 +34,8 @@ class IApprovalManager(ABC):
         self,
         approval_id: str,
         timeout: float = 120.0,
-        cancel_check: Optional[Callable[[], Any]] = None,
-    ) -> Optional[bool]:
+        cancel_check: Callable[[], Any] | None = None,
+    ) -> bool | None:
         """异步等待用户审批裁定结果 (True: 允许, False: 拒绝, None: 超时)"""
         pass
 
@@ -59,8 +59,8 @@ class InMemoryApprovalManager(IApprovalManager):
     """内存级人机协同审批管理器实现（线程与协程安全）"""
 
     def __init__(self):
-        self._pending: Dict[str, Dict[str, Any]] = {}
-        self._session_approved: Dict[str, Set[str]] = {}
+        self._pending: dict[str, dict[str, Any]] = {}
+        self._session_approved: dict[str, set[str]] = {}
 
     def create_approval_request(
         self,
@@ -89,8 +89,8 @@ class InMemoryApprovalManager(IApprovalManager):
         self,
         approval_id: str,
         timeout: float = 120.0,
-        cancel_check: Optional[Callable[[], Any]] = None,
-    ) -> Optional[bool]:
+        cancel_check: Callable[[], Any] | None = None,
+    ) -> bool | None:
         entry = self._pending.get(approval_id)
         if not entry:
             return None
@@ -157,7 +157,7 @@ class ISteeringManager(ABC):
         pass
 
     @abstractmethod
-    def pop_steering_messages(self, session_id: str) -> List[str]:
+    def pop_steering_messages(self, session_id: str) -> list[str]:
         """提取并清空指定排障会话累积的插话消息列表"""
         pass
 
@@ -166,14 +166,14 @@ class InMemorySteeringManager(ISteeringManager):
     """内存级即时插话管理器实现（线程与协程安全）"""
 
     def __init__(self):
-        self._queues: Dict[str, List[str]] = {}
+        self._queues: dict[str, list[str]] = {}
 
     def push_steering_message(self, session_id: str, message: str) -> None:
         clean = (message or "").strip()
         if clean and session_id:
             self._queues.setdefault(session_id, []).append(clean)
 
-    def pop_steering_messages(self, session_id: str) -> List[str]:
+    def pop_steering_messages(self, session_id: str) -> list[str]:
         if not session_id or session_id not in self._queues:
             return []
         return self._queues.pop(session_id, [])

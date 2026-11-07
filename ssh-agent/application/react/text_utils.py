@@ -1,13 +1,12 @@
 """应用层 - ReAct 模型响应解析与文本清洗"""
 
 import re
-from typing import Dict, Optional, Tuple
 
 from utils.shell import clean_extracted_command
 from utils.text import EMOJI_PATTERN, remove_emojis
 
 
-def extract_from_markdown_report(text: str) -> Tuple[str, Optional[str], Optional[str]]:
+def extract_from_markdown_report(text: str) -> tuple[str, str | None, str | None]:
     """当模型未严格按 Thought/Action 格式而是输出包含建议指令代码块的排障报告时，智能提取首个建议命令与思考"""
     blocks = re.findall(r"```(?:bash|sh)?\s*\n(.*?)\n```", text, re.DOTALL)
     if not blocks:
@@ -42,7 +41,7 @@ def extract_from_markdown_report(text: str) -> Tuple[str, Optional[str], Optiona
     return thought, action, title
 
 
-def parse_react_response(text: str) -> Dict[str, Optional[str]]:
+def parse_react_response(text: str) -> dict[str, str | None]:
     """从模型回复中提取 Thought, Action, Step_Title 或 Final_Answer (兼容 Markdown 加粗、空格与代码块排障报告)"""
     thought_match = re.search(
         r"(?:\*\*Thought:\*\*|Thought:)\s*(.*?)(?=(?:\*\*Plan:\*\*|Plan:|\*\*方案:\*\*|方案:|\*\*Action:\*\*|Action:|\*\*Step[\s_]Title:\*\*|Step[\s_]Title:|Step_Title:|\*\*Final[\s_]Answer:\*\*|Final[\s_]Answer:|\Z))",

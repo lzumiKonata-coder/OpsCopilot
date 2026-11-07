@@ -2,16 +2,15 @@
 
 import ast as py_ast
 import re
-from typing import List, Tuple
 
 from domain.rules import FORBIDDEN_DESTRUCTIVE_PATHS, SENSITIVE_FILES
 
 
-def _audit_python_payload(py_code: str) -> Tuple[List[str], List[str], List[str]]:
+def _audit_python_payload(py_code: str) -> tuple[list[str], list[str], list[str]]:
     """递归审计 python -c 载荷中潜在的高危与毁灭性代码"""
-    hit_rules: List[str] = []
-    forbidden: List[str] = []
-    high_risk: List[str] = []
+    hit_rules: list[str] = []
+    forbidden: list[str] = []
+    high_risk: list[str] = []
 
     try:
         tree = py_ast.parse(py_code)

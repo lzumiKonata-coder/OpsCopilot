@@ -13,3 +13,16 @@ export const removeEmojis = (text: string): string => {
   if (!text) return text;
   return text.replace(EMOJI_REGEX, '').trim();
 };
+
+// 已闭合的思考块，以及流式输出中尚未闭合的思考块
+const THINK_BLOCK_REGEX = /<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi;
+const OPEN_THINK_REGEX = /<think(?:ing)?>[\s\S]*$/i;
+
+/**
+ * 移除模型输出中 <think>...</think> 推理片段，避免在对话气泡中暴露思考过程
+ * 流式场景下未闭合的思考块同样隐藏，直到正文开始输出
+ */
+export const stripThinkBlocks = (text: string): string => {
+  if (!text) return text;
+  return text.replace(THINK_BLOCK_REGEX, '').replace(OPEN_THINK_REGEX, '').trim();
+};

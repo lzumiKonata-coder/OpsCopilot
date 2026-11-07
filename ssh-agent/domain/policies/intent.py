@@ -1,7 +1,7 @@
 """领域层 - 运维意图与命令类型判定策略"""
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 _READ_ONLY_INTENT_RE = re.compile(
     r"^(?:(?:请|麻烦|帮我|帮忙|给我|能否|可以)\s*)*"
@@ -91,8 +91,8 @@ def is_inspection_command(command: str) -> bool:
 
 def is_mutation_already_satisfied(
     thought: str,
-    final_answer: Optional[str],
-    executed_steps: List[Dict[str, Any]],
+    final_answer: str | None,
+    executed_steps: list[dict[str, Any]],
 ) -> bool:
     """
     检查变更/安装类任务是否经由物理探查确认目标已达成/无需重复安装。

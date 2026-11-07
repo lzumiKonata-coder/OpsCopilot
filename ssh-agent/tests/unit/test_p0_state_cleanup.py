@@ -4,7 +4,6 @@
 3. 单张图片 data URL 体积上限校验。
 """
 
-from typing import List, Optional
 
 import pytest
 from pydantic import ValidationError
@@ -21,7 +20,7 @@ from domain.entities import AuthType, SSHConnection
 class _StubSessionRepo:
     def __init__(self, deleted: bool = True):
         self.deleted = deleted
-        self.deleted_ids: List[str] = []
+        self.deleted_ids: list[str] = []
 
     async def delete(self, session_id: str) -> bool:
         self.deleted_ids.append(session_id)
@@ -30,14 +29,14 @@ class _StubSessionRepo:
 
 class _StubCheckpointer:
     def __init__(self):
-        self.deleted_threads: List[str] = []
+        self.deleted_threads: list[str] = []
 
     def delete_thread(self, thread_id: str) -> None:
         self.deleted_threads.append(thread_id)
 
 
 class _MockLLM(ILLMClient):
-    def __init__(self, responses: Optional[List[str]] = None):
+    def __init__(self, responses: list[str] | None = None):
         self.call_count = 0
         self.responses = responses or ["Thought: 查看磁盘\nAction: df -h\nStep_Title: 查看磁盘空间"]
 

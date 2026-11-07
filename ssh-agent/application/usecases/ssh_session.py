@@ -1,6 +1,5 @@
 """应用层 - SSH 终端会话日志用例 (ssh_session_log)"""
 
-from typing import Optional
 
 from application.ports import ISSHSessionLogRepository
 from domain.entities import SSHSessionLog
@@ -15,7 +14,7 @@ class RecordSSHSessionLogUseCase:
     async def open_session(
         self,
         connection_id: str,
-        remote_addr: Optional[str] = None,
+        remote_addr: str | None = None,
         user_id: str = "default",
     ) -> SSHSessionLog:
         log = SSHSessionLog(
@@ -26,5 +25,5 @@ class RecordSSHSessionLogUseCase:
         )
         return await self.session_log_repo.create_log(log)
 
-    async def close_session(self, session_id: str, error_msg: Optional[str] = None) -> Optional[SSHSessionLog]:
+    async def close_session(self, session_id: str, error_msg: str | None = None) -> SSHSessionLog | None:
         return await self.session_log_repo.close_log(session_id, error_msg=error_msg)

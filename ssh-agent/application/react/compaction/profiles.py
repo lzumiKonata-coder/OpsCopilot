@@ -1,8 +1,8 @@
 """应用层 - 模型上下文容量自适应画像"""
 
-from typing import Any, Dict, Optional
+from typing import Any
 
-MODEL_CONTEXT_PROFILES: Dict[str, Dict[str, Any]] = {
+MODEL_CONTEXT_PROFILES: dict[str, dict[str, Any]] = {
     # 128k 超长上下文模型：GLM-4-Plus, DeepSeek-V3/R1, Qwen-2.5-72B, GPT-4o
     "128k": {
         "max_history_tokens": 16000,
@@ -30,7 +30,7 @@ MODEL_CONTEXT_PROFILES: Dict[str, Dict[str, Any]] = {
 }
 
 
-def resolve_context_profile(model_name: Optional[str] = None) -> Dict[str, Any]:
+def resolve_context_profile(model_name: str | None = None) -> dict[str, Any]:
     """根据大模型名称动态解析上下文预算配置画像"""
     if not model_name:
         return dict(MODEL_CONTEXT_PROFILES["standard"])

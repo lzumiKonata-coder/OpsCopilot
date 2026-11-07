@@ -1,7 +1,8 @@
 """应用层 - Think 节点：只读查询收敛与最终响应裁定"""
 
 import logging
-from typing import Any, Dict, List, Optional
+import uuid
+from typing import Any
 
 from application.react.observation import extract_command_payload, is_empty_observation
 from domain.policies.intent import (
@@ -17,11 +18,11 @@ class ConvergenceMixin:
     def _try_converge_read_only_query(
         self,
         user_prompt: str,
-        executed_steps: List[Dict[str, Any]],
+        executed_steps: list[dict[str, Any]],
         step_idx: int,
         llm_call_count: int,
         total_tokens: int,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """只读查询类任务强收敛保护：单目标查询在拿到数据后立即收敛"""
         is_query_intent = is_read_only_query_prompt(user_prompt)
         is_multi_target_query = is_multi_target_read_only_prompt(user_prompt)
@@ -64,18 +65,18 @@ class ConvergenceMixin:
         step_idx: int,
         user_prompt: str,
         thought: str,
-        command: Optional[str],
-        step_title: Optional[str],
-        final_answer: Optional[str],
-        interactive_hint: Optional[str],
+        command: str | None,
+        step_title: str | None,
+        final_answer: str | None,
+        interactive_hint: str | None,
         is_mutation: bool,
-        executed_steps: List[Dict[str, Any]],
-        steering_events: List[Dict[str, Any]],
-        current_tool_name: Optional[str],
-        current_tool_args: Optional[Dict[str, Any]],
+        executed_steps: list[dict[str, Any]],
+        steering_events: list[dict[str, Any]],
+        current_tool_name: str | None,
+        current_tool_args: dict[str, Any] | None,
         llm_call_count: int,
         total_tokens: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """交互悬挂兜底、最终收敛判定与命令下发返回"""
         # 核心防悬挂保护：若终端正停留在交互确认提示符或未闭合续行符中，但模型由于格式偏差未输出 command
         # 强制下发 y 或中断信号，彻底杜绝终端被悬挂遗弃
@@ -185,11 +186,13 @@ class ConvergenceMixin:
             "title": step_title,
             "command": command,
         }
+        effective_tool_name = current_tool_name or ("execute_ssh_command" if command else None)
         return {
             "current_thought": thought,
             "current_command": command,
             "current_step_title": step_title,
-            "current_tool_name": current_tool_name or ("execute_ssh_command" if command else None),
+            "current_tool_name": effective_tool_name,
+            "current_tool_call_id": f"call_{uuid.uuid4().hex}" if effective_tool_name else None,
             "current_tool_args": current_tool_args or ({"command": command} if command else None),
             "llm_call_count": llm_call_count,
             "total_tokens": total_tokens,

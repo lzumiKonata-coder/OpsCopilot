@@ -1,6 +1,6 @@
 """内置工具：在远端主机执行单行 Shell 命令"""
 
-from typing import Any, Dict
+from typing import Any
 
 from application.ports import ToolInvocation, ToolOperation, ToolSpec
 
@@ -33,7 +33,7 @@ class ExecuteSshCommandTool:
 
     def normalize(
         self,
-        args: Dict[str, Any],
+        args: dict[str, Any],
         step_idx: int,
         fallback_thought: str = "",
     ) -> ToolInvocation:

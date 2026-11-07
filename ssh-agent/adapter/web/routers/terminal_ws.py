@@ -5,12 +5,11 @@ Web 适配层 - 交互式 WebSSH 伪终端路由 (ssh_session_log 全链路追�
 import asyncio
 import json
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, status
 
-from adapter.bootstrap import container
-from adapter.web.dependencies import (
+from adapter.composition_root import container
+from adapter.web.factory import (
     get_host_repository,
     get_record_ssh_session_log_use_case,
     get_terminal_gateway,
@@ -47,7 +46,7 @@ async def websocket_terminal_endpoint(
 
     # 记录 SSH 终端会话开启 (ssh_session_log)
     client_ip = websocket.client.host if websocket.client else "unknown"
-    session_log_entry: Optional[SSHSessionLog] = None
+    session_log_entry: SSHSessionLog | None = None
     try:
         session_log_entry = await session_log_use_case.open_session(
             connection_id=host.connection_id,

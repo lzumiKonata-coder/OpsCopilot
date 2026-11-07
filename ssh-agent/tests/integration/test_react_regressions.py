@@ -3,11 +3,10 @@
 """
 
 import time
-from typing import List
 
 import pytest
 
-from adapter.repository.database import get_db_session
+from adapter.repository.db_engine import get_session_factory
 from adapter.repository import SQLAlchemyChatRepository, SQLAlchemySSHConnectionRepository
 from adapter.ssh.terminal_manager import InMemorySSHTerminalSessionManager
 from application.ports import ILLMClient
@@ -31,7 +30,7 @@ from tests.fakes.react_helpers import (
 @pytest.mark.asyncio
 async def test_react_auditor_crash_blocks_command():
     """P0 回归: 审查器自身异常时必须 fail-secure 保守阻断，绝不放行指令到 PTY"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
         saved_host = await _create_react_host(host_repo, "audit-crash-host", "192.168.1.110")
@@ -62,7 +61,7 @@ async def test_react_auditor_crash_blocks_command():
 @pytest.mark.asyncio
 async def test_react_auditor_block_decision_stops_loop():
     """P0 回归: 审查器判定 FORBIDDEN 时阻断指令、不下发终端并终止循环"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         saved_host = await _create_react_host(host_repo, "audit-block-host", "192.168.1.112")
 
@@ -88,7 +87,7 @@ async def test_react_auditor_block_decision_stops_loop():
 @pytest.mark.asyncio
 async def test_react_action_multiline_text_not_injected():
     """P0 回归: Action 后跟随的解释性多行文本绝不能被注入 PTY 当作多条命令执行"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         saved_host = await _create_react_host(host_repo, "multiline-host", "192.168.1.111")
 
@@ -139,7 +138,7 @@ async def test_analyze_observation_factual_no_false_match():
 @pytest.mark.asyncio
 async def test_react_root_context_dynamic_correction():
     """P0 回归: 回显出现 ]# root 提示符后，后续 System Prompt 必须修正 is_root，不再诱导 sudo"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         host = SSHConnection(
             name="root-detect-host",
@@ -170,7 +169,7 @@ async def test_react_root_context_dynamic_correction():
 @pytest.mark.asyncio
 async def test_react_failure_advice_matches_error_type():
     """P0 回归: 失败兜底结论按报错类型分发建议（权限错误不再误导去查网络/软件源）"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         host = SSHConnection(
             name="perm-host",
@@ -305,7 +304,7 @@ def test_parse_react_response_supports_spaces_and_bold_markdown():
 @pytest.mark.asyncio
 async def test_react_langgraph_cancel_check_aborts_stream():
     """验证：客户端触发取消/断开连接时，LangGraph 状态机立即退出，不再执行后续命令"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         saved_host = await _create_react_host(host_repo, "cancel-host", "192.168.1.120")
 
@@ -336,13 +335,13 @@ async def test_react_langgraph_cancel_check_aborts_stream():
 @pytest.mark.asyncio
 async def test_react_images_are_sent_as_multimodal_message():
     """验证：上传的图片以 OpenAI 兼容的 image_url 内容块传入大模型"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         saved_host = await _create_react_host(host_repo, "vision-image-host", "192.168.1.131")
 
         class RecordingLLM(ILLMClient):
             def __init__(self):
-                self.messages: List[list] = []
+                self.messages: list[list] = []
 
             async def chat(self, messages: list, temperature: float = 0.2) -> str:
                 self.messages.append(messages)

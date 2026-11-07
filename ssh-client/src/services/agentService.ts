@@ -1,5 +1,5 @@
 import { API_BASE_URL, apiClient } from './api';
-import type { CommandRiskNotice, PermissionMode, ReActEvent } from '../types';
+import type { PermissionMode, ReActEvent } from '../types';
 
 interface StreamCallbacks {
   onEvent: (event: ReActEvent) => void;
@@ -10,10 +10,14 @@ interface StreamCallbacks {
 /**
  * 统一消费 SSE 响应流（POST 发起与 GET 接续共用）
  */
-async function consumeSSEStream(
+async function consumeSSEStream<T = ReActEvent>(
   url: string,
   init: RequestInit,
-  callbacks: StreamCallbacks,
+  callbacks: {
+    onEvent: (event: T) => void;
+    onError: (err: Error) => void;
+    onDone: () => void;
+  },
   abortSignal?: AbortSignal
 ): Promise<void> {
   try {
@@ -51,7 +55,7 @@ async function consumeSSEStream(
         }
 
         try {
-          const event: ReActEvent = JSON.parse(dataStr);
+          const event = JSON.parse(dataStr) as T;
           callbacks.onEvent(event);
         } catch (parseErr) {
           console.warn('[SSE Parse Warn]:', parseErr, dataStr);
@@ -71,70 +75,53 @@ async function consumeSSEStream(
 
 export const agentService = {
   /**
-   * 研判高危命令风险等级与影响说明（前端事前风险评估，供展示与提示，不强制阻断）
+   * 普通对话 SSE 流式接口（单次大模型调用，不调用工具）
    */
-  getCommandRiskNotice(cmd: string): CommandRiskNotice {
-    const trimmed = (cmd || '').trim();
-    if (!trimmed) {
-      return { isDangerous: false, level: 'INFO', title: '常规指令', desc: '无已知高风险。' };
-    }
+  async streamChat(
+    hostId: string,
+    params: {
+      prompt: string;
+      terminalBuffer?: string;
+      sessionId?: string;
+      permissionMode?: PermissionMode;
+    },
+    callbacks: {
+      onContent: (chunk: string) => void;
+      onError: (err: Error) => void;
+      onDone: () => void;
+    },
+    abortSignal?: AbortSignal
+  ): Promise<void> {
+    const url = `${API_BASE_URL}/api/v1/hosts/${encodeURIComponent(hostId)}/agent/chat`;
 
-    // 格式化或高危磁盘破坏
-    if (/\b(?:mkfs|fdisk|parted|dd\s+if=.*of=\/dev\/[a-z]+)\b/i.test(trimmed)) {
-      return {
-        isDangerous: true,
-        level: 'HIGH',
-        title: '高危破坏性磁盘操作',
-        desc: '检测到底层文件系统格式化或块设备直接写入命令，操作极具破坏性，可能导致整盘数据彻底丢失！',
-      };
-    }
-
-    // 递归强制删除
-    if (/\brm\s+-(?:r[fF]|[fF]r|R)\s+/i.test(trimmed)) {
-      return {
-        isDangerous: true,
-        level: 'HIGH',
-        title: '高危递归强制删除',
-        desc: '检测到 `rm -rf` 递归强制删除操作，将直接永久移除指定目录下的全部内容。请审视目标路径是否绝对正确！',
-      };
-    }
-
-    // 关机、重启
-    if (/\b(?:reboot|shutdown|init\s+0|poweroff|halt)\b/i.test(trimmed)) {
-      return {
-        isDangerous: true,
-        level: 'HIGH',
-        title: '系统级关停/重启',
-        desc: '该指令将立即中断主机操作系统，当前所有运行中的服务与终端连接都将强制断开。',
-      };
-    }
-
-    // 强杀所有或系统 PID
-    if (/\bkill\s+-9\s+(?:1|-1)\b|\bkillall\b/i.test(trimmed)) {
-      return {
-        isDangerous: true,
-        level: 'HIGH',
-        title: '危险进程批量强杀',
-        desc: '可能引起操作系统核心服务瘫痪或系统崩溃。',
-      };
-    }
-
-    // 常见变更操作 (中危)
-    if (/\b(?:systemctl\s+(?:stop|restart)|docker\s+rm\s+-f|iptables\s+-F)\b/i.test(trimmed)) {
-      return {
-        isDangerous: true,
-        level: 'MEDIUM',
-        title: '关键服务变更或防火墙重置',
-        desc: '该操作可能会造成当前业务网络瞬断或容器被强行销毁。',
-      };
-    }
-
-    return {
-      isDangerous: false,
-      level: 'INFO',
-      title: '常规运维操作',
-      desc: '属于受管范围内的安全探查或普通操作。',
-    };
+    return consumeSSEStream<{ content?: string; error?: string }>(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify({
+          prompt: params.prompt,
+          terminal_buffer: params.terminalBuffer || '',
+          session_id: params.sessionId,
+          permission_mode: params.permissionMode || 'request_approval',
+        }),
+      },
+      {
+        onEvent: (event) => {
+          if (event.error) {
+            callbacks.onError(new Error(event.error));
+          } else if (event.content) {
+            callbacks.onContent(event.content);
+          }
+        },
+        onError: callbacks.onError,
+        onDone: callbacks.onDone,
+      },
+      abortSignal
+    );
   },
 
   /**
@@ -256,24 +243,6 @@ export const agentService = {
         approval_id: payload.approvalId,
         approved: payload.approved,
         scope: payload.scope || 'once',
-      }
-    );
-    return res.data;
-  },
-
-  /**
-   * 智能单步回显研判
-   */
-  async analyzeStep(
-    hostId: string,
-    params: { stepNumber: number; command: string; observation: string }
-  ): Promise<{ step_number: number; command: string; analysis: string; is_normal: boolean }> {
-    const res = await apiClient.post(
-      `/api/v1/hosts/${encodeURIComponent(hostId)}/agent/step-analyze`,
-      {
-        step_number: params.stepNumber,
-        command: params.command,
-        observation: params.observation,
       }
     );
     return res.data;

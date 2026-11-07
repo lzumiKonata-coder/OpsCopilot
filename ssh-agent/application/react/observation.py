@@ -1,12 +1,11 @@
 """应用层 - 终端回显解析、错误检测与归一化"""
 
 import re
-from typing import Optional
 
 from domain.policies.intent import is_inspection_command
 
 
-def detect_interactive_prompt(text: Optional[str]) -> Optional[str]:
+def detect_interactive_prompt(text: str | None) -> str | None:
     """
     从终端物理回显中检测是否包含交互式确认提示符（如 [y/N]、是否删除...？、Do you want to continue? 等）
     若检测到，返回提示关键短语；否则返回 None
@@ -74,7 +73,7 @@ def is_empty_observation(command: str, raw_observation: str) -> bool:
     return not extract_command_payload(command, raw_observation)
 
 
-def detect_command_error(command: str, observation: str) -> Optional[str]:
+def detect_command_error(command: str, observation: str) -> str | None:
     """
     从 PTY 终端回显中检测指令物理执行失败特征
     已增强：智能区分查看日志产生的包含 error 输出 vs 指令自身崩溃

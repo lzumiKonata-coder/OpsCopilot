@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 from application.react.cancel_context import get_cancel_check
 from application.react.state import ReActGraphState
@@ -12,7 +12,7 @@ logger = logging.getLogger("smartops.application.react.nodes.approval_gate")
 
 
 class ApprovalGateNodeMixin:
-    async def _node_approval_gate(self, state: ReActGraphState) -> Dict[str, Any]:
+    async def _node_approval_gate(self, state: ReActGraphState) -> dict[str, Any]:
         """Node 2b: 人机协同审批门禁挂起等待节点 (绝不强制取消，支持确认执行与自适应重思替代)"""
         approval_id = state.get("pending_approval_id")
         command = state.get("current_command", "")
@@ -47,6 +47,8 @@ class ApprovalGateNodeMixin:
                 "step": step_idx,
                 "title": step_title or f"第 {step_idx} 步：时间超限终止",
                 "command": command or "(方案确认)",
+                "tool_name": tool_name,
+                "tool_call_id": state.get("current_tool_call_id"),
                 "audit_decision": "TIMEOUT",
                 "risk_level": "HIGH_RISK",
                 "status": "timeout",
@@ -67,7 +69,7 @@ class ApprovalGateNodeMixin:
             }
 
         effective_approval_timeout = min(self.approval_timeout, remaining_seconds)
-        user_approved: Optional[bool] = None
+        user_approved: bool | None = None
         if self.approval_manager and approval_id:
             user_approved = await self.approval_manager.wait_for_decision(
                 approval_id=approval_id,
@@ -156,6 +158,8 @@ class ApprovalGateNodeMixin:
                     "step": step_idx,
                     "title": step_title or f"第 {step_idx} 步：用户审批拒绝 [{tool_name}]",
                     "command": command or tool_name,
+                    "tool_name": tool_name,
+                    "tool_call_id": state.get("current_tool_call_id"),
                     "audit_decision": "REJECTED",
                     "risk_level": "HIGH_RISK",
                     "status": "rejected",
@@ -192,6 +196,8 @@ class ApprovalGateNodeMixin:
                     "step": step_idx,
                     "title": step_title or f"第 {step_idx} 步：方案确认超时",
                     "command": "(方案确认)",
+                    "tool_name": tool_name,
+                    "tool_call_id": state.get("current_tool_call_id"),
                     "audit_decision": "TIMEOUT",
                     "risk_level": "HIGH_RISK",
                     "status": "timeout",
@@ -223,6 +229,8 @@ class ApprovalGateNodeMixin:
                     "step": step_idx,
                     "title": step_title or f"第 {step_idx} 步：高危审批超时 [{tool_name}]",
                     "command": command or tool_name,
+                    "tool_name": tool_name,
+                    "tool_call_id": state.get("current_tool_call_id"),
                     "audit_decision": "TIMEOUT",
                     "risk_level": "HIGH_RISK",
                     "status": "timeout",

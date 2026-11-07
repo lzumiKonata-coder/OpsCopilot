@@ -7,10 +7,9 @@
 4. ReAct 状态机完整闭环：从 rm test.txt 触发询问 -> 智能体感知并输入 y -> 成功落地
 """
 
-from typing import List
 import pytest
 
-from adapter.repository.database import get_db_session
+from adapter.repository.db_engine import get_session_factory
 from adapter.repository import (
     SQLAlchemyChatRepository,
     SQLAlchemySSHConnectionRepository,
@@ -25,10 +24,10 @@ from domain.entities import AuthType, Command, ExecutionResult, SSHConnection
 
 
 class MockLLM(ILLMClient):
-    def __init__(self, responses: List[str]):
+    def __init__(self, responses: list[str]):
         self.responses = responses
         self.call_count = 0
-        self.received_messages: List[list] = []
+        self.received_messages: list[list] = []
 
     async def chat(self, messages: list, temperature: float = 0.2) -> str:
         self.received_messages.append(messages)
@@ -44,7 +43,7 @@ class MockLLM(ILLMClient):
 
 class InteractiveFakeGateway(ISSHGateway):
     def __init__(self):
-        self.executed: List[str] = []
+        self.executed: list[str] = []
 
     async def execute(self, host: SSHConnection, command: Command) -> ExecutionResult:
         cmd_str = command.raw_command
@@ -63,7 +62,7 @@ class FakeInteractivePtyProcess:
     def __init__(self, manager: InMemorySSHTerminalSessionManager, identifier: str):
         self.manager = manager
         self.identifier = identifier
-        self.written: List[str] = []
+        self.written: list[str] = []
         self.stdin = self
 
     def write(self, data: str):
@@ -161,7 +160,7 @@ async def test_terminal_manager_non_interactive_command_clears_stuck_prompt():
 @pytest.mark.asyncio
 async def test_react_loop_handles_interactive_y_input():
     """验证：完整 ReAct 闭环在遇到 rm 交互询问时，智能体感知并输入 y，成功达成任务"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
         host = SSHConnection(
@@ -241,7 +240,7 @@ ls | grep test.txt
 @pytest.mark.asyncio
 async def test_react_loop_handles_markdown_four_part_report_with_y():
     """验证：真实 ReAct 循环中，模型第 2 步回复四段式包含 y 的代码块时，能准确执行 y 而非提前结束"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
         host = SSHConnection(
@@ -298,7 +297,7 @@ ls | grep test.txt
 @pytest.mark.asyncio
 async def test_react_loop_auto_completes_y_when_terminal_waiting_and_model_omits_action():
     """验证：若终端停在交互提示符，但模型仅输出纯文本未生成任何命令时，底层兜底自动发送 y 推进，不挂起终端"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
         host = SSHConnection(
@@ -359,7 +358,7 @@ def test_detect_command_error_inspection_no_such_file():
 @pytest.mark.asyncio
 async def test_react_loop_anti_infinite_verification_loop():
     """验证：若智能体在删除后连续重复执行相同查看验证指令（如多次 ls | grep），状态机自动收敛并成功结束"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
         host = SSHConnection(

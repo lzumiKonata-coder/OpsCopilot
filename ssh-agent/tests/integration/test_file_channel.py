@@ -4,10 +4,10 @@
 """
 
 import asyncio
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator
 import pytest
 
-from adapter.repository.database import get_db_session
+from adapter.repository.db_engine import get_session_factory
 from adapter.repository import (
     SQLAlchemyChatRepository,
     SQLAlchemySSHConnectionRepository,
@@ -20,24 +20,24 @@ from domain.entities import AuthType, Command, ExecutionResult, SSHConnection
 
 
 class ToolCallingMockLLM(ILLMClient):
-    def __init__(self, responses: List[LLMResponse]):
+    def __init__(self, responses: list[LLMResponse]):
         self.responses = responses
         self.call_count = 0
 
     async def stream_chat(
         self,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.2,
-        tools: Optional[List[Dict[str, Any]]] = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> AsyncGenerator[str, None]:
         res = await self.chat(messages, temperature=temperature, tools=tools)
         yield str(res)
 
     async def chat(
         self,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.2,
-        tools: Optional[List[Dict[str, Any]]] = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
         idx = min(self.call_count, len(self.responses) - 1)
         resp = self.responses[idx]
@@ -49,11 +49,11 @@ class MockFileSSHGateway(ISSHGateway):
     """支持静态文件读写与命令记录的测试网关"""
 
     def __init__(self):
-        self.files: Dict[str, str] = {
+        self.files: dict[str, str] = {
             "/etc/nginx/nginx.conf": "events {}\nhttp {\n    server {\n        listen 80;\n    }\n}\n",
         }
-        self.executed_commands: List[str] = []
-        self.file_write_delays: Dict[str, float] = {}
+        self.executed_commands: list[str] = []
+        self.file_write_delays: dict[str, float] = {}
 
     async def execute(self, host: SSHConnection, command: Command) -> ExecutionResult:
         self.executed_commands.append(command.raw_command)
@@ -146,7 +146,7 @@ async def test_remote_file_mutation_queue_allows_different_paths_parallel():
 @pytest.mark.asyncio
 async def test_react_read_remote_file_static_channel():
     """验证 read_remote_file 工具调用走只读静态通道，获取纯净文本且不向 PTY 发送命令"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
 
@@ -202,7 +202,7 @@ async def test_react_read_remote_file_static_channel():
 @pytest.mark.asyncio
 async def test_react_write_remote_file_safe_mutation():
     """验证 write_remote_file 工具调用受排队锁保护并原子写入远端文件"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
 

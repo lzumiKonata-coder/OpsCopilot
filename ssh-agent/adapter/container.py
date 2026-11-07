@@ -6,8 +6,8 @@ from typing import Any
 from langgraph.checkpoint.memory import MemorySaver
 
 from adapter.agent.openai_client import OpenAICompatibleLLMClient
-from adapter.repository.database import close_db, init_db
-from adapter.runtime import RunEventBrokerRegistry
+from adapter.repository.db_engine import close_db, init_db
+from adapter.event_bus import RunEventBrokerRegistry
 from adapter.security.auditor import BashlexCommandAuditor
 from adapter.ssh.asyncssh_gateway import AsyncSSHGateway
 from adapter.ssh.terminal_manager import InMemorySSHTerminalSessionManager

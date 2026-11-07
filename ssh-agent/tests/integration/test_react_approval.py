@@ -9,17 +9,16 @@ ReAct 人机协同审批机制专项测试 (Human-in-the-Loop Approval)
 6. Web API 审批接口 POST /api/v1/hosts/{id}/agent/react/approve 端到端联通
 """
 
-from typing import List, Optional
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from adapter.repository.database import get_db_session
+from adapter.repository.db_engine import get_session_factory
 from adapter.repository import (
     SQLAlchemyChatRepository,
     SQLAlchemySSHConnectionRepository,
 )
 from adapter.security.auditor import BashlexCommandAuditor
-from adapter.bootstrap import container
+from adapter.composition_root import container
 from adapter.web.main import app
 from application.ports import ICommandAuditor, ILLMClient, ISSHGateway
 from application.react.managers import InMemoryApprovalManager
@@ -35,10 +34,10 @@ from domain.entities import (
 
 
 class MockLLM(ILLMClient):
-    def __init__(self, responses: List[str]):
+    def __init__(self, responses: list[str]):
         self.responses = responses
         self.call_count = 0
-        self.received_messages: List[list] = []
+        self.received_messages: list[list] = []
 
     async def chat(self, messages: list, temperature: float = 0.2) -> str:
         self.received_messages.append(messages)
@@ -54,7 +53,7 @@ class MockLLM(ILLMClient):
 
 class RecordingSSHGateway(ISSHGateway):
     def __init__(self):
-        self.executed: List[str] = []
+        self.executed: list[str] = []
 
     async def execute(self, host: SSHConnection, command: Command) -> ExecutionResult:
         cmd_str = command.raw_command
@@ -68,7 +67,7 @@ class RecordingSSHGateway(ISSHGateway):
 
 
 class ConfigurableAuditor(ICommandAuditor):
-    def __init__(self, high_risk_cmds: List[str], forbidden_cmds: Optional[List[str]] = None):
+    def __init__(self, high_risk_cmds: list[str], forbidden_cmds: list[str] | None = None):
         self.high_risk_cmds = high_risk_cmds
         self.forbidden_cmds = forbidden_cmds or []
 
@@ -110,7 +109,7 @@ async def _create_test_host(host_repo, name: str, ip: str) -> SSHConnection:
 @pytest.mark.asyncio
 async def test_react_high_risk_approved_executes_successfully():
     """测试：高危命令（kill -9）触发 approval_required，人工审批通过后顺利下发 PTY 执行"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
         saved_host = await _create_test_host(host_repo, "appr-host-1", "192.168.1.131")
@@ -170,7 +169,7 @@ async def test_react_high_risk_approved_executes_successfully():
 @pytest.mark.asyncio
 async def test_react_high_risk_rejected_does_not_cancel_and_agent_adapts():
     """测试：高危命令（systemctl restart）被用户拒绝执行，任务不取消，智能体收到反馈自适应换用只读状态检查"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
         saved_host = await _create_test_host(host_repo, "appr-host-2", "192.168.1.132")
@@ -230,7 +229,7 @@ async def test_react_high_risk_rejected_does_not_cancel_and_agent_adapts():
 @pytest.mark.asyncio
 async def test_react_high_risk_pre_approved_executes_immediately():
     """测试：当配置了 permission_mode='full_access' 或白名单命令时，高危命令免审批直接执行"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         saved_host = await _create_test_host(host_repo, "appr-host-3", "192.168.1.133")
 
@@ -273,7 +272,7 @@ async def test_react_high_risk_pre_approved_executes_immediately():
 @pytest.mark.asyncio
 async def test_react_forbidden_is_strictly_blocked_never_approvable():
     """测试：rm -rf / 等破坏性指令被平台底层硬性拦截，不进入审批，坚决阻断"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         saved_host = await _create_test_host(host_repo, "appr-host-4", "192.168.1.134")
 
@@ -355,7 +354,7 @@ async def test_react_web_approval_endpoint_api():
 @pytest.mark.asyncio
 async def test_react_pre_plan_confirmation_approved_and_executes():
     """测试：变更/删除任务第 1 步输出执行思路与风险询问，挂起等待用户确认；用户批准后顺畅执行后续命令"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
         saved_host = await _create_test_host(host_repo, "plan-host-1", "192.168.1.188")
@@ -435,7 +434,7 @@ async def test_react_pre_plan_confirmation_approved_and_executes():
 @pytest.mark.asyncio
 async def test_react_pre_plan_confirmation_rejected_cancels():
     """测试：变更/删除任务方案确认被用户拒绝时，流程安全退出，严禁下发任何物理命令"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         host_repo = SQLAlchemySSHConnectionRepository(session)
         chat_repo = SQLAlchemyChatRepository(session)
         saved_host = await _create_test_host(host_repo, "plan-host-2", "192.168.1.189")

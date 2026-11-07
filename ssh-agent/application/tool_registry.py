@@ -5,7 +5,7 @@
 本模块只负责工具的统一注册、查询与 OpenAI Schema 导出。
 """
 
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Iterable
 
 from application.ports import ITool
 
@@ -14,7 +14,7 @@ class ToolRegistry:
     """工具注册表：集中管理工具声明与参数归一化"""
 
     def __init__(self, tools: Iterable[ITool] = ()):
-        self._tools: Dict[str, ITool] = {}
+        self._tools: dict[str, ITool] = {}
         for tool in tools:
             self.register(tool)
 
@@ -24,17 +24,14 @@ class ToolRegistry:
             raise ValueError(f"Tool already registered: {name}")
         self._tools[name] = tool
 
-    def get(self, name: Optional[str]) -> Optional[ITool]:
+    def get(self, name: str | None) -> ITool | None:
         if not name:
             return None
         return self._tools.get(name)
 
-    def specs(self) -> List[Dict[str, Any]]:
+    def specs(self) -> list[dict[str, Any]]:
         """返回可直接传给大模型 tools 参数的声明列表"""
         return [tool.spec.to_openai_schema() for tool in self._tools.values()]
-
-    def names(self) -> List[str]:
-        return list(self._tools.keys())
 
     def __contains__(self, name: str) -> bool:
         return name in self._tools

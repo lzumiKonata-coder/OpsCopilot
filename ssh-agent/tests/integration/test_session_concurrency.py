@@ -3,7 +3,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from adapter.bootstrap import container
+from adapter.composition_root import container
 from adapter.web.main import app
 from application.react.engine import LangGraphReActEngine
 from application.runtime import RemoteFileMutationQueue, SessionConcurrencyGuard

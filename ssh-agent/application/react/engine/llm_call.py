@@ -1,7 +1,7 @@
 """应用层 - ReAct 引擎 LLM 调用能力"""
 
 import asyncio
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable
 
 from application.ports import ILLMClient
 from application.react.cancel_context import get_cancel_check
@@ -25,11 +25,11 @@ class LLMCallMixin:
 
     async def _safe_llm_chat(
         self,
-        conversation: List[Dict[str, Any]],
+        conversation: list[dict[str, Any]],
         temperature: float = 0.1,
-        tools: Optional[List[Dict[str, Any]]] = None,
-        on_token: Optional[Callable[[str], Any]] = None,
-        cancel_check: Optional[Callable[[], Any]] = None,
+        tools: list[dict[str, Any]] | None = None,
+        on_token: Callable[[str], Any] | None = None,
+        cancel_check: Callable[[], Any] | None = None,
     ) -> Any:
         """安全调用大模型：自动按客户端签名或降级机制传入 tools / on_token，支持异步流式与长时间调用中途即时取消打断"""
         eff_cancel_check = cancel_check or get_cancel_check()
@@ -48,7 +48,7 @@ class LLMCallMixin:
             if on_token is not None:
                 on_token(token)
 
-        kwargs: Dict[str, Any] = {"temperature": temperature}
+        kwargs: dict[str, Any] = {"temperature": temperature}
         if tools is not None and supports_tools:
             kwargs["tools"] = tools
         if on_token is not None and supports_on_token:

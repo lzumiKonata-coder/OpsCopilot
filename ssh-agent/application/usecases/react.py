@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Awaitable, Callable
 import uuid
 
 from application.runtime import RemoteFileMutationQueue
@@ -27,9 +27,9 @@ from application.tool_registry import ToolRegistry
 from application.usecases.chat import ChatWithOpsAgentUseCase
 from application.usecases.memory import _load_long_term_memory_text, _save_long_term_memory
 from domain.entities import ChatSession, SSHConnection
-from domain.rules import EntityNotFoundError
+from domain.rules import DomainError, EntityNotFoundError
 from utils.shell import detect_os_family
-from utils.text import remove_emojis
+from utils.text import TokenBudgetEstimator, remove_emojis
 
 logger = logging.getLogger("smartops.application.usecases.react")
 
@@ -40,21 +40,21 @@ class ReActRunOptions:
 
     identifier: str
     user_prompt: str
-    images: Optional[List[str]] = None
-    terminal_buffer: Optional[str] = None
-    session_id: Optional[str] = None
-    max_steps: Optional[int] = None
-    max_run_seconds: Optional[float] = None
-    max_llm_calls: Optional[int] = None
-    max_tokens: Optional[int] = None
-    pre_planned_steps: Optional[List[Dict[str, str]]] = None
-    cancel_check: Optional[Callable[[], Awaitable[bool]]] = None
-    permission_mode: Optional[str] = "request_approval"
-    approved_commands: Optional[List[str]] = None
-    branch_from_session_id: Optional[str] = None
-    branch_step_idx: Optional[int] = None
-    branch_title: Optional[str] = None
-    steering_message: Optional[str] = None
+    images: list[str] | None = None
+    terminal_buffer: str | None = None
+    session_id: str | None = None
+    max_steps: int | None = None
+    max_run_seconds: float | None = None
+    max_llm_calls: int | None = None
+    max_tokens: int | None = None
+    pre_planned_steps: list[dict[str, str]] | None = None
+    cancel_check: Callable[[], Awaitable[bool]] | None = None
+    permission_mode: str | None = "request_approval"
+    approved_commands: list[str] | None = None
+    branch_from_session_id: str | None = None
+    branch_step_idx: int | None = None
+    branch_title: str | None = None
+    steering_message: str | None = None
 
 
 @dataclass
@@ -62,14 +62,14 @@ class ReActExecutionContext:
     """请求执行期派生的上下文快照"""
 
     host: SSHConnection
-    session: Optional[ChatSession]
+    session: ChatSession | None
     options: ReActRunOptions
     os_family: str
     is_root_user: bool
     memory_extra: str
-    session_history: List[Dict[str, str]]
+    session_history: list[dict[str, str]]
     is_branching: bool
-    forked_state: Dict[str, Any]
+    forked_state: dict[str, Any]
 
 
 class ReActUseCase:
@@ -83,20 +83,20 @@ class ReActUseCase:
         self,
         host_repo: ISSHConnectionRepository,
         llm_client: ILLMClient,
-        terminal_manager: Optional[ISSHTerminalSessionManager] = None,
-        terminal_gateway: Optional[ISSHTerminalGateway] = None,
-        ssh_gateway: Optional[ISSHGateway] = None,
-        session_repo: Optional[IChatSessionRepository] = None,
-        memory_repo: Optional[IMemoryRepository] = None,
-        auditor: Optional[ICommandAuditor] = None,
-        approval_manager: Optional[IApprovalManager] = None,
-        steering_manager: Optional[ISteeringManager] = None,
+        terminal_manager: ISSHTerminalSessionManager | None = None,
+        terminal_gateway: ISSHTerminalGateway | None = None,
+        ssh_gateway: ISSHGateway | None = None,
+        session_repo: IChatSessionRepository | None = None,
+        memory_repo: IMemoryRepository | None = None,
+        auditor: ICommandAuditor | None = None,
+        approval_manager: IApprovalManager | None = None,
+        steering_manager: ISteeringManager | None = None,
         approval_timeout: float = 120.0,
-        context_window_size: Optional[int] = None,
-        max_observation_chars: Optional[int] = None,
-        tool_registry: Optional[ToolRegistry] = None,
-        file_mutation_queue: Optional[RemoteFileMutationQueue] = None,
-        engine: Optional[IReActEngine] = None,
+        context_window_size: int | None = None,
+        max_observation_chars: int | None = None,
+        tool_registry: ToolRegistry | None = None,
+        file_mutation_queue: RemoteFileMutationQueue | None = None,
+        engine: IReActEngine | None = None,
     ):
         self.host_repo = host_repo
         self.llm_client = llm_client
@@ -148,11 +148,13 @@ class ReActUseCase:
 
     async def _prepare_session(
         self,
-        session_id: Optional[str],
+        session_id: str | None,
         host: SSHConnection,
-    ) -> Optional[ChatSession]:
-        """加载或初始化会话 (chat_session)"""
-        session: Optional[ChatSession] = None
+        parent_session_id: str | None = None,
+        branch_step: int | None = None,
+    ) -> ChatSession | None:
+        """加载或初始化会话 (chat_session)；分叉会话会记录父会话与切入点"""
+        session: ChatSession | None = None
         if self.session_repo:
             if session_id:
                 session = await self.session_repo.get_by_id(session_id)
@@ -160,6 +162,9 @@ class ReActUseCase:
                 session = ChatSession(
                     id=session_id or str(uuid.uuid4()),
                     agent_id=host.connection_id,
+                    parent_session_id=parent_session_id,
+                    branch_step=branch_step,
+                    user_id=host.user_id,
                     title="ReAct智能排障",
                     messages=[],
                 )
@@ -167,7 +172,7 @@ class ReActUseCase:
 
     async def _load_memory_context(
         self,
-        session: Optional[ChatSession],
+        session: ChatSession | None,
         host: SSHConnection,
         user_prompt: str,
     ) -> str:
@@ -195,11 +200,11 @@ class ReActUseCase:
 
     @staticmethod
     def _collect_session_history(
-        session: Optional[ChatSession],
+        session: ChatSession | None,
         user_prompt: str,
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         """提取会话最近多轮消息，并记录本轮用户输入（跳过前端合成的临时前缀）"""
-        session_history: List[Dict[str, str]] = []
+        session_history: list[dict[str, str]] = []
         if not session:
             return session_history
 
@@ -207,11 +212,27 @@ class ReActUseCase:
             session_history.append({"role": m.role, "content": m.content})
         is_synthetic_prompt = user_prompt.startswith("目标任务:") or user_prompt.startswith("执行排障方案:")
         if not is_synthetic_prompt:
-            session.append_message(role="user", content=user_prompt)
+            session.append_message(
+                role="user",
+                content=user_prompt,
+                priority="HIGH",
+                token_count=TokenBudgetEstimator.estimate_tokens(user_prompt),
+            )
         return session_history
 
     @staticmethod
-    def _sanitize_event(payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _step_priority(step: dict[str, Any]) -> str:
+        """按审计风险与执行结果分级消息优先级"""
+        if step.get("audit_decision") == "FORBIDDEN":
+            return "CRITICAL"
+        if step.get("audit_decision") in ("REJECTED", "TIMEOUT") or step.get("risk_level") == "HIGH_RISK":
+            return "HIGH"
+        if step.get("is_error"):
+            return "HIGH"
+        return "MEDIUM"
+
+    @staticmethod
+    def _sanitize_event(payload: dict[str, Any]) -> dict[str, Any]:
         """统一剥离事件文本中的 Emoji"""
         return {
             key: remove_emojis(value) if isinstance(value, str) else value
@@ -222,11 +243,11 @@ class ReActUseCase:
         self,
         graph_app: Any,
         initial_state: ReActGraphState,
-        run_config: Dict[str, Any],
-        cancel_check: Optional[Callable[[], Awaitable[bool]]],
-        last_state: Dict[str, Any],
-        outcome: Dict[str, Any],
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+        run_config: dict[str, Any],
+        cancel_check: Callable[[], Awaitable[bool]] | None,
+        last_state: dict[str, Any],
+        outcome: dict[str, Any],
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """执行 LangGraph 状态图流，持续产出事件并回填运行结果"""
         try:
             async for mode, chunk in graph_app.astream(initial_state, config=run_config, stream_mode=["updates", "custom"]):
@@ -285,12 +306,13 @@ class ReActUseCase:
 
     async def _persist_outcome(
         self,
-        session: Optional[ChatSession],
+        session: ChatSession | None,
         host: SSHConnection,
-        last_state: Dict[str, Any],
-        outcome: Dict[str, Any],
+        last_state: dict[str, Any],
+        outcome: dict[str, Any],
         os_family: str,
         is_root_user: bool,
+        branch_step_idx: int | None = None,
     ) -> None:
         """会话历史与排障里程碑落库 (chat_session / chat_message / chat_milestone)"""
         executed_steps = last_state.get("executed_steps", [])
@@ -308,12 +330,40 @@ class ReActUseCase:
             final_conclusion = last_state.get("final_conclusion") or ("排障流程已执行完成。" if is_success else "排障流程未完全达成或已被阻断。")
 
         if session and self.session_repo:
+            # 仅本轮新执行的步骤落库为 tool 消息（分支会话不重复写入父会话继承的步骤）
+            current_steps = [
+                s for s in executed_steps
+                if branch_step_idx is None or s.get("step", 0) > branch_step_idx
+            ]
+            for s in current_steps:
+                tool_content = s.get("observation") or s.get("analysis") or ""
+                session.append_message(
+                    role="tool",
+                    content=tool_content,
+                    tool_name=s.get("tool_name"),
+                    tool_call_id=s.get("tool_call_id"),
+                    priority=self._step_priority(s),
+                    token_count=TokenBudgetEstimator.estimate_tokens(tool_content),
+                )
+
             trace_md = f"### 智能排障报告 {status_str}\n\n**最终结论**：\n{final_conclusion}\n\n**执行推演详情**：\n"
             for s in executed_steps:
                 trace_md += f"- **步骤 {s['step']} ({s['title']})**: `{s['command']}`\n  - 研判：{s['analysis']}\n"
 
-            session.append_message(role="assistant", content=remove_emojis(trace_md))
-            session.add_milestone(type_name="REACT_DIAGNOSIS", content=final_conclusion[:200])
+            if outcome["is_errored"]:
+                report_priority = "CRITICAL"
+            elif is_success:
+                report_priority = "MEDIUM"
+            else:
+                report_priority = "HIGH"
+            report_content = remove_emojis(trace_md)
+            session.append_message(
+                role="assistant",
+                content=report_content,
+                priority=report_priority,
+                token_count=TokenBudgetEstimator.estimate_tokens(report_content),
+            )
+            session.add_milestone(type_name="DIAGNOSIS", content=final_conclusion[:200])
 
             if is_success:
                 # 仅在任务成功闭环时沉淀 ServerEnv 画像，避免失败任务错误猜测污染
@@ -348,7 +398,7 @@ class ReActUseCase:
             except Exception as exc:
                 logger.error("Failed to save ReAct session: %s", exc)
 
-    def _small_talk_reply(self, user_prompt: str) -> Optional[str]:
+    def _small_talk_reply(self, user_prompt: str) -> str | None:
         """非运维任务（打招呼、闲聊等）的极简回答，无需触碰终端"""
         if self.is_greeting(user_prompt):
             return "您好！我是 SmartOps AI 运维智能副驾驶，随时为您提供系统运维支持。请问有什么可以协助您的？"
@@ -395,6 +445,7 @@ class ReActUseCase:
             "current_thought": "",
             "current_command": None,
             "current_tool_name": None,
+            "current_tool_call_id": None,
             "current_tool_args": None,
             "current_step_title": "",
             "current_observation": "",
@@ -441,22 +492,22 @@ class ReActUseCase:
         self,
         identifier: str,
         user_prompt: str,
-        images: Optional[List[str]] = None,
-        terminal_buffer: Optional[str] = None,
-        session_id: Optional[str] = None,
-        max_steps: Optional[int] = None,
-        max_run_seconds: Optional[float] = None,
-        max_llm_calls: Optional[int] = None,
-        max_tokens: Optional[int] = None,
-        pre_planned_steps: Optional[List[Dict[str, str]]] = None,
-        cancel_check: Optional[Callable[[], Awaitable[bool]]] = None,
-        permission_mode: Optional[str] = "request_approval",
-        approved_commands: Optional[List[str]] = None,
-        branch_from_session_id: Optional[str] = None,
-        branch_step_idx: Optional[int] = None,
-        branch_title: Optional[str] = None,
-        steering_message: Optional[str] = None,
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+        images: list[str] | None = None,
+        terminal_buffer: str | None = None,
+        session_id: str | None = None,
+        max_steps: int | None = None,
+        max_run_seconds: float | None = None,
+        max_llm_calls: int | None = None,
+        max_tokens: int | None = None,
+        pre_planned_steps: list[dict[str, str]] | None = None,
+        cancel_check: Callable[[], Awaitable[bool]] | None = None,
+        permission_mode: str | None = "request_approval",
+        approved_commands: list[str] | None = None,
+        branch_from_session_id: str | None = None,
+        branch_step_idx: int | None = None,
+        branch_title: str | None = None,
+        steering_message: str | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """面向调用方的便捷入口：将散列参数聚合为 ReActRunOptions 后执行"""
         options = ReActRunOptions(
             identifier=identifier,
@@ -480,7 +531,7 @@ class ReActUseCase:
         async for event in self._execute(options):
             yield event
 
-    async def _execute(self, options: ReActRunOptions) -> AsyncGenerator[Dict[str, Any], None]:
+    async def _execute(self, options: ReActRunOptions) -> AsyncGenerator[dict[str, Any], None]:
         """执行一次 ReAct 排障请求的完整生命周期编排"""
         host = await self.host_repo.get_by_identifier(options.identifier)
         if not host:
@@ -488,22 +539,54 @@ class ReActUseCase:
         options.user_prompt = remove_emojis(options.user_prompt).strip()
         user_prompt = options.user_prompt
 
-        # 加载或初始化会话 (chat_session)
-        session = await self._prepare_session(options.session_id, host)
+        # 分叉参数校验：父会话必须存在且切入点必须真实存在，避免静默降级为普通会话
+        is_branching = bool(options.branch_from_session_id and options.branch_step_idx is not None)
+        if is_branching:
+            if self.session_repo:
+                parent_session = await self.session_repo.get_by_id(options.branch_from_session_id)
+                if not parent_session:
+                    raise EntityNotFoundError(
+                        f"Parent session '{options.branch_from_session_id}' not found."
+                    )
+            if not await self.engine.get_step_state(
+                options.branch_from_session_id, options.branch_step_idx
+            ):
+                raise DomainError(
+                    f"Branch step {options.branch_step_idx} does not exist in session "
+                    f"'{options.branch_from_session_id}'."
+                )
+
+        # 加载或初始化会话 (chat_session)；分叉请求会带上父会话与切入点
+        branch_parent = options.branch_from_session_id if options.branch_step_idx is not None else None
+        session = await self._prepare_session(
+            options.session_id,
+            host,
+            parent_session_id=branch_parent,
+            branch_step=options.branch_step_idx if branch_parent else None,
+        )
 
         # 1. 意图分流：若非运维任务（打招呼、闲聊等），极简回答并直接退出，不触碰终端
         small_talk_text = self._small_talk_reply(user_prompt)
         if small_talk_text is not None:
             yield {"type": "greeting", "content": small_talk_text}
             if session and self.session_repo:
-                session.append_message(role="user", content=user_prompt)
-                session.append_message(role="assistant", content=small_talk_text)
+                session.append_message(
+                    role="user",
+                    content=user_prompt,
+                    priority="HIGH",
+                    token_count=TokenBudgetEstimator.estimate_tokens(user_prompt),
+                )
+                session.append_message(
+                    role="assistant",
+                    content=small_talk_text,
+                    priority="LOW",
+                    token_count=TokenBudgetEstimator.estimate_tokens(small_talk_text),
+                )
                 await self.session_repo.save(session)
             return
 
         # 分支特性支持：若指定了父分支，克隆历史并初始化分支状态
-        is_branching = bool(options.branch_from_session_id and options.branch_step_idx is not None)
-        forked_state_dict: Dict[str, Any] = {}
+        forked_state_dict: dict[str, Any] = {}
         if is_branching:
             branch_sid, forked_state_dict = await self.engine.fork_branch(
                 parent_session_id=options.branch_from_session_id,
@@ -562,7 +645,7 @@ class ReActUseCase:
         thread_id = session.id if session else f"react_{uuid.uuid4().hex[:12]}"
         run_config = {"configurable": {"thread_id": thread_id}}
 
-        outcome: Dict[str, Any] = {"is_cancelled": False, "is_errored": False, "error_msg": None}
+        outcome: dict[str, Any] = {"is_cancelled": False, "is_errored": False, "error_msg": None}
         try:
             async for event in self._run_graph_stream(
                 graph_app=graph_app,
@@ -582,9 +665,10 @@ class ReActUseCase:
                 outcome=outcome,
                 os_family=os_family,
                 is_root_user=is_root_user,
+                branch_step_idx=options.branch_step_idx,
             )
 
-    async def get_session_checkpoints(self, session_id: str) -> List[Dict[str, Any]]:
+    async def get_session_checkpoints(self, session_id: str) -> list[dict[str, Any]]:
         """时间旅行：查询会话历史执行各步检查点"""
         return await self.engine.get_session_checkpoints(session_id)
 
@@ -592,9 +676,9 @@ class ReActUseCase:
         self,
         parent_session_id: str,
         branch_point_step: int,
-        branch_title: Optional[str] = None,
-        new_prompt: Optional[str] = None,
-    ) -> Tuple[str, Dict[str, Any]]:
+        branch_title: str | None = None,
+        new_prompt: str | None = None,
+    ) -> tuple[str, dict[str, Any]]:
         """手动从指定检查点分叉新排障分支"""
         return await self.engine.fork_branch(
             parent_session_id=parent_session_id,
@@ -602,7 +686,3 @@ class ReActUseCase:
             branch_title=branch_title,
             new_prompt=new_prompt,
         )
-
-    def get_session_tree(self, root_session_id: str) -> Dict[str, Any]:
-        """获取会话分支拓扑树"""
-        return self.engine.session_tree_manager.get_tree(root_session_id)

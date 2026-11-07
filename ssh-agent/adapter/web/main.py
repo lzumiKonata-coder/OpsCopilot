@@ -12,7 +12,7 @@ from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from adapter.bootstrap import shutdown_services, startup_services
+from adapter.composition_root import shutdown_services, startup_services
 from adapter.web.routers import (
     agent_react,
     agent_sessions,

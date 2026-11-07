@@ -1,7 +1,6 @@
 """适配层 - SSH 终端会话日志仓储实现"""
 
 from datetime import datetime, timezone
-from typing import List, Optional
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,7 +45,7 @@ class SQLAlchemySSHSessionLogRepository(ISSHSessionLogRepository):
         await self.session.commit()
         return self._to_entity(po)
 
-    async def close_log(self, session_id: str, error_msg: Optional[str] = None) -> Optional[SSHSessionLog]:
+    async def close_log(self, session_id: str, error_msg: str | None = None) -> SSHSessionLog | None:
         stmt = select(SSHSessionLogPO).where(SSHSessionLogPO.session_id == session_id)
         result = await self.session.execute(stmt)
         po = result.scalars().first()
@@ -59,13 +58,13 @@ class SQLAlchemySSHSessionLogRepository(ISSHSessionLogRepository):
         await self.session.commit()
         return self._to_entity(po)
 
-    async def get_by_session_id(self, session_id: str) -> Optional[SSHSessionLog]:
+    async def get_by_session_id(self, session_id: str) -> SSHSessionLog | None:
         stmt = select(SSHSessionLogPO).where(SSHSessionLogPO.session_id == session_id)
         result = await self.session.execute(stmt)
         po = result.scalars().first()
         return self._to_entity(po) if po else None
 
-    async def list_by_connection(self, connection_id: str, limit: int = 50) -> List[SSHSessionLog]:
+    async def list_by_connection(self, connection_id: str, limit: int = 50) -> list[SSHSessionLog]:
         stmt = (
             select(SSHSessionLogPO)
             .where(SSHSessionLogPO.connection_id == connection_id)

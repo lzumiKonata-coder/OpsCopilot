@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 from adapter.security.auditor import BashlexCommandAuditor
 from adapter.security.crypto import encrypt_credential, decrypt_credential
 from adapter.ssh.asyncssh_gateway import AsyncSSHGateway
-from adapter.repository.database import get_db_session
+from adapter.repository.db_engine import get_session_factory
 from adapter.repository.models import SSHConnectionPO
 from adapter.repository import SQLAlchemySSHConnectionRepository
 from application.ports import ISSHGateway
@@ -244,7 +244,7 @@ def test_credential_encryption_and_backward_compatibility():
 @pytest.mark.asyncio
 async def test_repository_credential_encryption_and_passphrase_persistence():
     """验证保存主机凭据时密文落库、passphrase 持久化以及读取时正确解密"""
-    async for session in get_db_session():
+    async with get_session_factory()() as session:
         repo = SQLAlchemySSHConnectionRepository(session)
 
         conn_id = "test-cred-host-999"

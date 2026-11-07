@@ -4,14 +4,13 @@
 """
 
 import asyncio
-from typing import Dict, Optional
 
 
 class TaskCancellationManager:
     """会话与任务级主动取消管理器"""
 
     def __init__(self) -> None:
-        self._cancel_events: Dict[str, asyncio.Event] = {}
+        self._cancel_events: dict[str, asyncio.Event] = {}
 
     def get_or_create_cancel_event(self, task_key: str) -> asyncio.Event:
         if task_key not in self._cancel_events:

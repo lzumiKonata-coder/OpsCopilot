@@ -3,7 +3,6 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 import re
-from typing import List, Optional
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,9 +89,9 @@ class SQLAlchemyMemoryRepository(IMemoryRepository):
     async def list_core_memories(
         self,
         user_id: str = "default",
-        category: Optional[str] = None,
+        category: str | None = None,
         limit: int = 20,
-    ) -> List[CoreMemory]:
+    ) -> list[CoreMemory]:
         stmt = select(CoreMemoryPO).where(CoreMemoryPO.user_id == user_id)
         if category:
             stmt = stmt.where(CoreMemoryPO.category == category)
@@ -101,7 +100,7 @@ class SQLAlchemyMemoryRepository(IMemoryRepository):
         return [self._core_to_entity(po) for po in result.scalars().all()]
 
     @staticmethod
-    def _tokenize_query(text: str) -> List[str]:
+    def _tokenize_query(text: str) -> list[str]:
         """查询词元切分：英文/数字按词，中文按 2 字滑窗。"""
         lowered = (text or "").lower()
         tokens = set(re.findall(r"[a-z0-9_\-]{2,}", lowered))
@@ -111,7 +110,7 @@ class SQLAlchemyMemoryRepository(IMemoryRepository):
         return list(tokens)
 
     @staticmethod
-    def _score_core_memory(po: CoreMemoryPO, tokens: List[str]) -> float:
+    def _score_core_memory(po: CoreMemoryPO, tokens: list[str]) -> float:
         """相关性打分：关键词命中最重，标题次之，正文最轻。"""
         keywords = (po.keywords or "").lower()
         title = (po.title or "").lower()
@@ -131,7 +130,7 @@ class SQLAlchemyMemoryRepository(IMemoryRepository):
         user_id: str,
         query_text: str,
         limit: int = 5,
-    ) -> List[CoreMemory]:
+    ) -> list[CoreMemory]:
         # 扩大候选池后再按相关性打分，避免仅凭优先级取前 N 条
         candidate_limit = max(limit * 8, 50)
         stmt = (
@@ -182,6 +181,8 @@ class SQLAlchemyMemoryRepository(IMemoryRepository):
                 new_confidence = memory.confidence
             po.content = memory.content
             po.keywords = memory.keywords
+            if memory.source_role:
+                po.source_role = memory.source_role
             po.confidence = Decimal(str(round(new_confidence, 4)))
             po.hit_count += 1
             po.updated_at = datetime.now(timezone.utc)
@@ -205,9 +206,9 @@ class SQLAlchemyMemoryRepository(IMemoryRepository):
     async def get_long_term_memories(
         self,
         user_id: str,
-        memory_type: Optional[str] = None,
+        memory_type: str | None = None,
         limit: int = 50,
-    ) -> List[LongTermMemory]:
+    ) -> list[LongTermMemory]:
         stmt = select(LongTermMemoryPO).where(LongTermMemoryPO.user_id == user_id)
         if memory_type:
             stmt = stmt.where(LongTermMemoryPO.memory_type == memory_type)

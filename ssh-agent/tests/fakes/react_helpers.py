@@ -1,12 +1,11 @@
 """智能运维 ReAct 测试共享 Mock 与网关"""
 
-from typing import List, Optional
 
 from application.ports import ICommandAuditor, ILLMClient, ISSHGateway
 from domain.entities import AuditDecision, AuthType, Command, ExecutionResult, RiskLevel, SSHConnection
 
 class MockLLM(ILLMClient):
-    def __init__(self, responses: Optional[List[str]] = None):
+    def __init__(self, responses: list[str] | None = None):
         self.responses = responses or [
             "Thought: 当前主机疑似根分区磁盘报警，需要先查看各挂载点的容量分布。\nAction: df -h\nStep_Title: 检查挂载点磁盘占用",
             "Thought: 从 df -h 回显可见 /dev/sda1 处于安全水位 45%，问题已查明无溢出风险。\nFinal_Answer: 目标主机物理磁盘空间充裕，无宕机风险，排障完成。",
@@ -40,7 +39,7 @@ class MockAdaptiveSSHGateway(ISSHGateway):
 class RecordingSSHGateway(ISSHGateway):
     """记录所有下发命令的测试网关"""
     def __init__(self):
-        self.executed: List[str] = []
+        self.executed: list[str] = []
 
     async def execute(self, host: SSHConnection, command: Command) -> ExecutionResult:
         self.executed.append(command.raw_command)
@@ -77,9 +76,9 @@ async def _create_react_host(host_repo, name: str, ip: str):
 class RecordingMockLLM(MockLLM):
     """记录每轮发送给模型的完整 messages，用于断言 System Prompt 动态渲染结果"""
 
-    def __init__(self, responses: Optional[List[str]] = None):
+    def __init__(self, responses: list[str] | None = None):
         super().__init__(responses=responses)
-        self.captured: List[list] = []
+        self.captured: list[list] = []
 
     async def chat(self, messages: list, temperature: float = 0.2) -> str:
         self.captured.append(messages)
@@ -90,7 +89,7 @@ class RootPromptSSHGateway(ISSHGateway):
     """回显末尾携带 root 提示符的测试网关（模拟真实 PTY 回显特征）"""
 
     def __init__(self):
-        self.executed: List[str] = []
+        self.executed: list[str] = []
 
     async def execute(self, host: SSHConnection, command: Command) -> ExecutionResult:
         self.executed.append(command.raw_command)
@@ -121,7 +120,7 @@ class FakePtyProcess:
         self._manager = manager
         self._identifier = identifier
         self._response_fn = response_fn
-        self.written: List[str] = []
+        self.written: list[str] = []
 
     def write(self, data: str) -> None:
         self.written.append(data)

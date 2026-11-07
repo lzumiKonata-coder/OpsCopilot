@@ -1,7 +1,6 @@
 """应用层 - ReAct 引擎回显研判与根用户探测"""
 
 import re
-from typing import Optional
 
 from application.react.observation import detect_interactive_prompt, is_empty_observation
 
@@ -83,7 +82,7 @@ class ObservationAnalysisMixin:
         return analysis
 
     @staticmethod
-    def detect_root_from_output(text: Optional[str]) -> Optional[bool]:
+    def detect_root_from_output(text: str | None) -> bool | None:
         if not text or not text.strip():
             return None
         tail = text.strip()[-200:]
@@ -94,7 +93,7 @@ class ObservationAnalysisMixin:
         return None
 
     @staticmethod
-    def failure_advice(last_error_detail: Optional[str]) -> str:
+    def failure_advice(last_error_detail: str | None) -> str:
         detail = (last_error_detail or "").split("(回显")[0]
         if "权限" in detail or "permission" in detail.lower():
             return "建议人工核查目标机登录账户、sudoers 配置（visudo）与 SELinux 策略，确认具备所需操作权限后重试。"

@@ -1,13 +1,13 @@
 """应用层 - ReAct Think 节点：LLM 回复解析与 ToolCall 归一化"""
 
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from application.react.text_utils import parse_react_response
 from utils.shell import clean_extracted_command
 
 
-def split_reply(reply: Any) -> Tuple[Any, str]:
+def split_reply(reply: Any) -> tuple[Any, str]:
     """拆分 LLM 回复为 (原生 ToolCalls, 文本内容)"""
     if isinstance(reply, dict):
         return reply.get("tool_calls"), reply.get("content") or ""
@@ -17,9 +17,9 @@ def split_reply(reply: Any) -> Tuple[Any, str]:
     )
 
 
-def parse_tool_calls(raw_calls: Any) -> List[Dict[str, Any]]:
+def parse_tool_calls(raw_calls: Any) -> list[dict[str, Any]]:
     """将原生 ToolCall 统一归一化为 {name, arguments} 列表"""
-    tool_calls: List[Dict[str, Any]] = []
+    tool_calls: list[dict[str, Any]] = []
     if not raw_calls:
         return tool_calls
 
@@ -43,11 +43,11 @@ def parse_tool_calls(raw_calls: Any) -> List[Dict[str, Any]]:
 
 def resolve_tool_call(
     tool_registry: Any,
-    tool_call: Dict[str, Any],
+    tool_call: dict[str, Any],
     step_idx: int,
     fallback_thought: str,
     fallback_to_args: bool = True,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """归一化工具调用参数；未注册工具可按原始参数兜底解析"""
     name = tool_call.get("name")
     args = tool_call.get("arguments") or {}
@@ -84,12 +84,12 @@ def resolve_tool_call(
     }
 
 
-def parse_text_response(reply_text: str) -> Dict[str, Any]:
+def parse_text_response(reply_text: str) -> dict[str, Any]:
     """纯文本格式的原始解析结果"""
     return parse_react_response(reply_text)
 
 
-def resolve_text_response(reply_text: str, step_idx: int) -> Dict[str, Any]:
+def resolve_text_response(reply_text: str, step_idx: int) -> dict[str, Any]:
     """无 ToolCalls 时回退至纯文本正则解析（缺失字段按步骤兜底）"""
     parsed = parse_react_response(reply_text)
     return {

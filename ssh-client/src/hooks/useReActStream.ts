@@ -44,6 +44,7 @@ export interface ReActStreamApi {
     branchOptions?: BranchOptions,
     images?: string[]
   ) => Promise<void>;
+  handleSendChatPrompt: (prompt: string, images?: string[]) => Promise<void>;
   handleStopAgent: () => void;
   attachRunningTask: (sessionId: string) => Promise<void>;
   resetStream: () => void;
@@ -393,6 +394,106 @@ export function useReActStream({
     }
   };
 
+  // 发送普通对话消息（Chat 模式：走 /agent/chat 单次问答接口）
+  const handleSendChatPrompt = async (prompt: string, images?: string[]) => {
+    if (!hostId || isAgentRunning) return;
+
+    const cleanPrompt = removeEmojis(prompt);
+    if (!cleanPrompt) return;
+
+    setSessionTitle(
+      cleanPrompt.length > 20 ? `${cleanPrompt.slice(0, 18)}...` : cleanPrompt
+    );
+
+    const userMsgId = `user-${Date.now()}`;
+    currentRunPromptIdRef.current = userMsgId;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: userMsgId,
+        role: 'user',
+        content: cleanPrompt,
+        images: images && images.length > 0 ? images : undefined,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+
+    setIsAgentRunning(true);
+    abortControllerRef.current = new AbortController();
+    attachSeqRef.current += 1;
+
+    const assistantMsgId = `assistant-${Date.now()}`;
+    let hasContent = false;
+    let failed = false;
+
+    try {
+      await agentService.streamChat(
+        hostId,
+        {
+          prompt: cleanPrompt,
+          terminalBuffer: getTerminalBuffer(),
+          sessionId: currentSessionId,
+          permissionMode,
+        },
+        {
+          onContent: (chunk) => {
+            if (!chunk) return;
+            hasContent = true;
+            setMessages((prev) => {
+              const idx = prev.findIndex((m) => m.id === assistantMsgId);
+              if (idx < 0) {
+                return [
+                  ...prev,
+                  {
+                    id: assistantMsgId,
+                    role: 'assistant',
+                    type: 'final_answer',
+                    content: chunk,
+                    timestamp: new Date().toISOString(),
+                  },
+                ];
+              }
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], content: updated[idx].content + chunk };
+              return updated;
+            });
+          },
+          onError: (err) => {
+            failed = true;
+            handleStreamError(err);
+          },
+          onDone: () => {
+            if (failed) return;
+            if (!hasContent) {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: `err-${Date.now()}`,
+                  role: 'system',
+                  type: 'error',
+                  content: '对话接口未返回任何内容',
+                },
+              ]);
+            }
+            setIsAgentRunning(false);
+          },
+        },
+        abortControllerRef.current.signal
+      );
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          role: 'system',
+          type: 'error',
+          content: err.message,
+        },
+      ]);
+      setIsAgentRunning(false);
+    }
+  };
+
   const handleStopAgent = () => {
     attachSeqRef.current += 1;
     if (abortControllerRef.current) {
@@ -417,6 +518,7 @@ export function useReActStream({
     approvedCommands,
     handleApprovalDecision,
     handleSendPrompt,
+    handleSendChatPrompt,
     handleStopAgent,
     attachRunningTask,
     resetStream,
