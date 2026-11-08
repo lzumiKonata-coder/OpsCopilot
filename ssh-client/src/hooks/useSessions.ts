@@ -41,7 +41,7 @@ export function useSessions({ hostId, streamControlRef, onSessionSelected }: Use
   // 会话列表抽屉展开状态由外层工作区控制，本 Hook 仅负责数据与会话切换
   const [sessions, setSessions] = useState<AgentSessionSummary[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
-  const [sessionTitle, setSessionTitle] = useState<string>('智能运维会话');
+  const [sessionTitle, setSessionTitle] = useState<string>('新会话');
   const [messages, setMessages] = useState<MessageItemType[]>([
     {
       id: 'welcome',
@@ -99,7 +99,7 @@ export function useSessions({ hostId, streamControlRef, onSessionSelected }: Use
         const newSession = await sessionService.createSession(targetHostId);
         setSessions([newSession]);
         setCurrentSessionId(newSession.session_id);
-        setSessionTitle(newSession.title || '智能运维会话');
+        setSessionTitle(newSession.title || '新会话');
         persistCurrentSession(targetHostId, newSession.session_id);
         if (restoreHistory) {
           setMessages([
@@ -125,7 +125,7 @@ export function useSessions({ hostId, streamControlRef, onSessionSelected }: Use
 
       if (restoreHistory || !currentSessionId) {
         setCurrentSessionId(chosen.session_id);
-        setSessionTitle(chosen.title || '智能运维会话');
+        setSessionTitle(chosen.title || '新会话');
         persistCurrentSession(targetHostId, chosen.session_id);
         if (restoreHistory) {
           await loadSessionMessages(chosen.session_id, DEFAULT_WELCOME_TEXT);
@@ -144,7 +144,7 @@ export function useSessions({ hostId, streamControlRef, onSessionSelected }: Use
     streamControlRef.current?.resetStream();
 
     setCurrentSessionId(session.session_id);
-    setSessionTitle(session.title || '智能运维会话');
+    setSessionTitle(session.title || '新会话');
     if (hostId) persistCurrentSession(hostId, session.session_id);
     onSessionSelected?.();
 
@@ -198,7 +198,7 @@ export function useSessions({ hostId, streamControlRef, onSessionSelected }: Use
         {
           id: `welcome-${newSession.session_id}`,
           role: 'assistant',
-          content: `已为您开启全新智能运维会话：**${newSession.title}**。\n请输入您的运维需求。`,
+          content: `已为您开启全新会话。\n请输入您的运维需求。`,
           timestamp: new Date().toISOString(),
         },
       ]);

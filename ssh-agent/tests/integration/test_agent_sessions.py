@@ -269,3 +269,42 @@ async def test_chat_use_case_persists_user_message_on_zero_output_exception():
         # 第二条为系统级异常告知，对话链路闭合
         assert saved_sess.messages[1].role == "assistant"
         assert "系统异常" in saved_sess.messages[1].content or "未返回任何数据" in saved_sess.messages[1].content
+
+
+@pytest.mark.asyncio
+async def test_auto_title_extraction_from_user_prompt():
+    """验证会话标题能从用户首条指令自动提炼，且能覆盖默认时间戳或模板前缀"""
+    async with get_session_factory()() as session:
+        chat_repo = SQLAlchemyChatRepository(session)
+        host_repo = SQLAlchemySSHConnectionRepository(session)
+        test_host = SSHConnection(
+            host_id="title-test-host",
+            name="test-server",
+            ip="192.168.1.10",
+            port=22,
+            username="root",
+            auth_type=AuthType.PASSWORD,
+            password="pwd",
+        )
+        await host_repo.save(test_host)
+
+        # 1. 模拟旧会话携带 "智能运维会话 (12:30:00)" 的场景
+        create_use_case = CreateAgentSessionUseCase(chat_repo, host_repo)
+        created = await create_use_case.execute(
+            host_identifier="title-test-host",
+            title="智能运维会话 (12:30:00)",
+        )
+        assert created.title == "智能运维会话 (12:30:00)"
+
+        # 2. 用户发送首条运维需求（带有 @terminal 前缀）
+        created.append_message(
+            role="user",
+            content="@terminal 结合终端回显排查 查看端口占用与僵尸进程",
+        )
+        assert created.title == "查看端口占用与僵尸进程"
+        await chat_repo.save(created)
+
+        # 3. 重新从仓储加载验证已持久化
+        reloaded = await chat_repo.get_by_id(created.id)
+        assert reloaded is not None
+        assert reloaded.title == "查看端口占用与僵尸进程"

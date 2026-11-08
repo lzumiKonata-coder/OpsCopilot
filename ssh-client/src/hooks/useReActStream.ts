@@ -200,7 +200,10 @@ export function useReActStream({
       return settleRunningSteps(prev, searchStartIndex, 'completed');
     });
     setIsAgentRunning(false);
-  }, [setMessages]);
+    if (hostId) {
+      fetchSessions(hostId);
+    }
+  }, [hostId, fetchSessions, setMessages]);
 
   // 刷新/切换会话后接续仍在服务端后台运行的排障任务
   const attachRunningTask = useCallback(
@@ -476,6 +479,9 @@ export function useReActStream({
               ]);
             }
             setIsAgentRunning(false);
+            if (hostId) {
+              fetchSessions(hostId);
+            }
           },
         },
         abortControllerRef.current.signal

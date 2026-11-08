@@ -61,18 +61,25 @@ async def build_react_stream_response(
         if active_buf:
             terminal_buf = active_buf
 
+    # 1. 任务唯一标识与并发互斥锁：防止同一会话被并发触发导致指令竞态冲突
     task_key = f"{identifier}:{req.session_id}" if req.session_id else identifier
     if not container.session_run_guard.try_acquire(task_key):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="该会话已有排障任务正在运行，请等待完成或先取消后再试。",
         )
+
+    # 2. 初始化任务取消信号量：清理上一轮残留的取消标记，确保本次推演正常起跑
     task_cancel_event = container.task_cancellation_manager.get_or_create_cancel_event(task_key)
     task_cancel_event.clear()
 
+    # 3. 复合型任务取消判定器：供 ReAct 引擎在每一步推演（思考/执行/反思）前后周期性回调
     async def combined_cancel_check() -> bool:
+        # (1) 业务级主动取消：用户点击前端“中止”按钮，或主机发起了全局中止广播
         if task_cancel_event.is_set() or container.task_cancellation_manager.is_cancelled(identifier):
             return True
+        # (2) 传输层断开取消（按需触发）：仅在显式开启 cancel_on_disconnect 时，检测客户端离线即终止；
+        #     默认保持后台持续推演，用户重新连接后可通过事件总线接续查看排障结果
         if req.cancel_on_disconnect:
             try:
                 if await request.is_disconnected():
@@ -82,20 +89,28 @@ async def build_react_stream_response(
         return False
 
     async def sse_react_stream():
+        """
+        SSE 响应流生成器：采用【生产者-消费者 + 传输层/任务层解耦】架构。
+        - 生产者 (_run_task 作为独立后台协程)：负责执行 ReAct 推演状态图，不因 HTTP 暂时断连而中断。
+        - 消费者 (当前生成器循环)：从队列消费事件并编码为 SSE 规范格式推流给前端。
+        - 事件总线 (broker)：全量缓存推演事件，支持前端断网重连、页面刷新后的历史回放与无缝接续。
+        """
         has_emitted_error = False
         task_emitted_error = False
         event_queue: asyncio.Queue = asyncio.Queue()
         guard_released = False
 
         def _release_guard_once() -> None:
+            """安全幂等地释放会话级互斥锁，确保仅释放一次"""
             nonlocal guard_released
             if not guard_released:
                 guard_released = True
                 container.session_run_guard.release(task_key)
 
         async def _run_task():
+            """后台工作协程 (生产者)：驱动 ReAct 引擎并双发事件至【事件总线】与【内存队列】"""
             nonlocal task_emitted_error
-            # 注册运行期事件总线：浏览器刷新/断线后可重新接续并回放历史事件
+            # 注册运行期事件总线：浏览器刷新/断线后可重新接续并按序号回放历史事件
             broker = container.run_event_broker_registry.create(task_key)
             try:
                 async for event in use_case.execute(
@@ -118,6 +133,7 @@ async def build_react_stream_response(
                 ):
                     if isinstance(event, dict) and event.get("type") == "error":
                         task_emitted_error = True
+                    # 双发策略：1. 入总线持久化供断线续跑；2. 入内存队列实时推流
                     broker.publish(event)
                     await event_queue.put(event)
             except Exception as exc:
@@ -128,16 +144,20 @@ async def build_react_stream_response(
                     await event_queue.put(error_event)
             finally:
                 broker.finish()
+                # 放入 None 作为队列哨兵值，通知消费者推流循环已结束
                 await event_queue.put(None)
                 container.task_cancellation_manager.unregister(task_key)
-                # 后台任务真正结束后才释放会话锁；客户端断线但任务继续时不提前释放
+                # 后台任务真正结束后才释放会话锁；若客户端断开但任务在后台继续，不提前放锁
                 _release_guard_once()
 
+        # 启动独立后台工作协程，解耦 HTTP 连接生命周期与后台业务生命周期
         background_task = asyncio.create_task(_run_task())
 
         try:
             while True:
+                # 检查网络连接状态：
                 if req.cancel_on_disconnect:
+                    # 模式 A：严格随网络连接生命周期终止任务
                     try:
                         if await request.is_disconnected():
                             logger.info("Client disconnected with cancel_on_disconnect=True, cancelling task for %s", identifier)
@@ -146,6 +166,7 @@ async def build_react_stream_response(
                     except Exception:
                         pass
                 else:
+                    # 模式 B (默认)：断网仅退出 SSE 推流，后台推演任务继续独立运行 (支持断线续跑)
                     try:
                         if await request.is_disconnected():
                             logger.info("Client disconnected, background task continues for %s", identifier)
@@ -153,6 +174,7 @@ async def build_react_stream_response(
                     except Exception:
                         pass
 
+                # 从事件队列非阻塞/带超时获取新事件（0.5s 超时以便定期轮询网络连接状态与取消信号）
                 try:
                     event = await asyncio.wait_for(event_queue.get(), timeout=0.5)
                 except asyncio.TimeoutError:
@@ -160,6 +182,7 @@ async def build_react_stream_response(
                         break
                     continue
 
+                # 收到 None 哨兵值表示后台任务已全部完成
                 if event is None:
                     break
 
@@ -167,8 +190,10 @@ async def build_react_stream_response(
                     has_emitted_error = True
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
+            # 发送 SSE 标准结束标记
             yield "data: [DONE]\n\n"
         except (asyncio.CancelledError, GeneratorExit):
+            # 客户端主动断开连接（如切换页面或关闭浏览器）
             logger.info("SSE ReAct stream ended due to disconnection/cancellation for %s", identifier)
             if req.cancel_on_disconnect:
                 container.task_cancellation_manager.cancel_task(task_key)
@@ -180,7 +205,7 @@ async def build_react_stream_response(
         finally:
             if req.cancel_on_disconnect and not background_task.done():
                 background_task.cancel()
-            # 后台任务仍在运行（断线续跑）时由 _run_task 释放；此处仅兜底已结束场景
+            # 仅当后台任务真正完成时释放会话互斥锁；后台仍在续跑时不提前释放
             if background_task.done():
                 _release_guard_once()
 

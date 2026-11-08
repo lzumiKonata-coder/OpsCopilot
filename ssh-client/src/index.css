@@ -1054,14 +1054,19 @@ code {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 0;
-  width: 320px;
+  width: 240px;
   background-color: #202020;
   border: 1px solid #333333;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
-  padding: 10px 0;
+  padding: 6px 0;
   z-index: 50;
   animation: popupFade 0.15s ease;
+}
+
+.permission-mode-popup {
+  left: -70px;
+  width: 240px;
 }
 
 @keyframes popupFade {
@@ -1076,11 +1081,11 @@ code {
 }
 
 .permission-popup-title {
-  font-size: 12px;
+  font-size: 11px;
   color: #8c8c8c;
-  padding: 0 16px 8px 16px;
+  padding: 0 12px 6px 12px;
   border-bottom: 1px solid #2a2a2a;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
   user-select: none;
 }
 
@@ -1088,7 +1093,7 @@ code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
+  padding: 6px 12px;
   cursor: pointer;
   transition: background-color 0.12s;
   user-select: none;
@@ -1105,17 +1110,17 @@ code {
 .permission-option-title {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: 5px;
+  font-size: 12px;
   font-weight: 500;
   color: #f0f0f0;
 }
 
 .permission-option-desc {
-  font-size: 11.5px;
+  font-size: 11px;
   color: #8c8c8c;
-  margin-top: 3px;
-  line-height: 1.4;
+  margin-top: 2px;
+  line-height: 1.35;
 }
 /* 探索版收起后右侧边缘悬浮唤出标签 */
 .floating-agent-reopen-tab {

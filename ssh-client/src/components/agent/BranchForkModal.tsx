@@ -152,7 +152,7 @@ export const BranchForkModal: React.FC<BranchForkModalProps> = ({
                 lineHeight: '1.4',
                 fontFamily: 'inherit',
               }}
-              placeholder="输入在此分支尝试的新排障方案，例如：尝试回滚配置并检查端口占用情况..."
+              placeholder="输入在此分支尝试的新方案，例如：尝试回滚配置并检查端口占用情况..."
             />
           </div>
 

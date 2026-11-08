@@ -247,6 +247,29 @@ class ChatMilestone(BaseModel):
     )
 
 
+def is_default_session_title(title: str | None) -> bool:
+    """判定会话当前是否处于默认/待命名状态"""
+    if not title or title in ("新会话", "智能运维会话", "ReAct智能排障"):
+        return True
+    if title.startswith("智能运维会话") or title.startswith("智能运维 排障会话"):
+        return True
+    return False
+
+
+def extract_session_title(content: str) -> str:
+    """从用户首条指令中提炼会话标题，过滤模板前缀并限制长度"""
+    cleaned = content.strip()
+    if cleaned.startswith("@terminal"):
+        cleaned = cleaned[len("@terminal"):].strip()
+    for prefix in ["结合终端回显排查", "目标任务:", "目标任务：", "执行排障方案:", "执行排障方案："]:
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix):].strip()
+    first_line = cleaned.split("\n")[0].strip()
+    if len(first_line) > 24:
+        return first_line[:24]
+    return first_line or "新会话"
+
+
 class ChatSession(BaseModel):
     """
     对话会话实体 (chat_session)
@@ -302,9 +325,10 @@ class ChatSession(BaseModel):
         self.messages.append(msg)
         self.message_count = len(self.messages)
         self.updated_at = datetime.now(timezone.utc)
-        if self.title == "新会话" and role == "user":
-            first_line = content.strip().split("\n")[0].strip()
-            self.title = first_line[:24] if len(first_line) > 24 else (first_line or "新会话")
+        if is_default_session_title(self.title) and role == "user":
+            extracted = extract_session_title(content)
+            if extracted and extracted != "新会话":
+                self.title = extracted
         return msg
 
     def add_milestone(self, type_name: str, content: str) -> ChatMilestone:

@@ -18,7 +18,7 @@ export const sessionService = {
   async createSession(hostId: string, title?: string): Promise<AgentSessionSummary> {
     const res = await apiClient.post<AgentSessionSummary>(
       `/api/v1/hosts/${encodeURIComponent(hostId)}/agent/sessions`,
-      { title: title || `智能运维会话 (${new Date().toLocaleTimeString()})` }
+      { title: title || undefined }
     );
     return res.data;
   },

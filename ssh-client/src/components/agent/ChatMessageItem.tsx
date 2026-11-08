@@ -126,7 +126,7 @@ const ChatMessageItemComponent: React.FC<ChatMessageItemProps> = ({
             <button
               type="button"
               className="assistant-action-btn"
-              title="基于此结果切出新排障分支 (分叉)"
+              title="分叉"
               onClick={() => onForkBranch()}
             >
               <GitFork size={14} />

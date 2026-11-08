@@ -165,7 +165,7 @@ class ReActUseCase:
                     parent_session_id=parent_session_id,
                     branch_step=branch_step,
                     user_id=host.user_id,
-                    title="ReAct智能排障",
+                    title="新会话",
                     messages=[],
                 )
         return session

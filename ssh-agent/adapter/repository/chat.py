@@ -7,7 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapter.repository.models import ChatMessagePO, ChatMilestonePO, ChatSessionPO
 from application.ports import IChatSessionRepository
-from domain.entities import ChatMessage, ChatMilestone, ChatSession
+from domain.entities import (
+    ChatMessage,
+    ChatMilestone,
+    ChatSession,
+    extract_session_title,
+    is_default_session_title,
+)
 
 
 class SQLAlchemyChatRepository(IChatSessionRepository):
@@ -216,9 +222,10 @@ class SQLAlchemyChatRepository(IChatSessionRepository):
         if sess_po:
             sess_po.message_count += 1
             sess_po.updated_at = datetime.now(timezone.utc)
-            if sess_po.title == "新会话" and message.role == "user":
-                line = message.content.strip().split("\n")[0].strip()
-                sess_po.title = line[:24] if len(line) > 24 else (line or "新会话")
+            if is_default_session_title(sess_po.title) and message.role == "user":
+                extracted = extract_session_title(message.content)
+                if extracted and extracted != "新会话":
+                    sess_po.title = extracted
 
         await self.session.commit()
         return ChatMessage(

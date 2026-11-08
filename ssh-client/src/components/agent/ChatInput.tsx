@@ -316,9 +316,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                       setShowModeMenu(false);
                     }}
                   >
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
                       <MessageSquare
-                        size={16}
+                        size={14}
                         color="#3fb950"
                         style={{ marginTop: '2px', flexShrink: 0 }}
                       />
@@ -332,7 +332,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                       </div>
                     </div>
                     {mode === 'chat' && (
-                      <Check size={16} color="#ffffff" style={{ flexShrink: 0 }} />
+                      <Check size={14} color="#ffffff" style={{ flexShrink: 0 }} />
                     )}
                   </div>
 
@@ -343,9 +343,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                       setShowModeMenu(false);
                     }}
                   >
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
                       <Bot
-                        size={16}
+                        size={14}
                         color="#388bfd"
                         style={{ marginTop: '2px', flexShrink: 0 }}
                       />
@@ -354,12 +354,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                           <span>Agent</span>
                         </div>
                         <div className="permission-option-desc">
-                          自治闭环排障，自动执行命令并推演
+                          自动执行命令并推演
                         </div>
                       </div>
                     </div>
                     {mode === 'agent' && (
-                      <Check size={16} color="#ffffff" style={{ flexShrink: 0 }} />
+                      <Check size={14} color="#ffffff" style={{ flexShrink: 0 }} />
                     )}
                   </div>
                 </div>
@@ -367,7 +367,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             </div>
 
             {/* 工具权限模式按钮与弹出菜单 */}
-            <div ref={permissionWrapperRef} style={{ display: 'flex' }}>
+            <div ref={permissionWrapperRef} style={{ position: 'relative', display: 'flex' }}>
               <div
                 className="input-pill-select"
                 title="工具权限模式"
