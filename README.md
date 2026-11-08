@@ -17,10 +17,10 @@ OpsCopilot 面向基础设施运维工程师，将传统的黑盒 AI 问答升�
 
 ## 界面预览
 
-### 主机资产管理
+### 一体化终端与 AI 排障工作台 
 ![主机资产管理：受管主机列表、连接状态与一键打开终端](ssh-agent/docs/images/host-assets.png)
 
-### 一体化终端与 AI 排障工作台
+### 主机资产管理
 ![一体化终端与 AI 排障工作台：左侧 WebSSH 终端，右侧 ReAct 智能体面板](ssh-agent/docs/images/terminal-workspace.png)
 
 ---
