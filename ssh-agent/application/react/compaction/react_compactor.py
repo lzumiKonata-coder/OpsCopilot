@@ -25,6 +25,7 @@ class ReActContextCompactor:
         max_history_tokens: int | None = None,
         model_name: str | None = None,
         min_recent_steps: int = 2,
+        reserved_tokens: int = 0,
     ):
         profile = resolve_context_profile(model_name)
         self.model_name = model_name
@@ -32,9 +33,12 @@ class ReActContextCompactor:
         self.max_observation_chars = (
             max_observation_chars if max_observation_chars is not None else profile["max_observation_chars"]
         )
-        self.max_history_tokens = (
+        base_history_tokens = (
             max_history_tokens if max_history_tokens is not None else profile["max_history_tokens"]
         )
+        # 预留固定上下文开销（如 tools schema），但至少保留 40% 预算避免过度压缩
+        self.reserved_tokens = max(0, reserved_tokens)
+        self.max_history_tokens = max(int(base_history_tokens * 0.4), base_history_tokens - self.reserved_tokens)
         self.min_recent_steps = max(1, min_recent_steps)
         self.estimator = TokenBudgetEstimator()
 

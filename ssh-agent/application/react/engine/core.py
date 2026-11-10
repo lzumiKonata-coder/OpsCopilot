@@ -40,6 +40,7 @@ from application.react.nodes.finish import FinishNodeMixin
 from application.react.nodes.observe import ObserveAndReflectNodeMixin
 from application.react.nodes.think import ThinkNodeMixin
 from application.tool_registry import ToolRegistry
+from utils.text import TokenBudgetEstimator
 
 logger = logging.getLogger("smartops.application.react.engine")
 
@@ -110,16 +111,20 @@ class LangGraphReActEngine(
         )
         eff_max_history_tokens = profile["max_history_tokens"]
 
+        # 工具 schema 随每次请求一同占用模型窗口，压缩预算需为其预留固定开销
+        tool_tokens = TokenBudgetEstimator.estimate_tools_tokens(self.tool_registry.specs())
         self.context_compactor = context_compactor or ReActContextCompactor(
             window_size=eff_window_size,
             max_observation_chars=eff_max_obs,
             max_history_tokens=eff_max_history_tokens,
             model_name=llm_model,
+            reserved_tokens=tool_tokens,
         )
         self.session_compactor = session_compactor or SessionCompactor(
             max_recent_turns=profile["max_recent_turns"],
             max_session_tokens=profile["max_session_tokens"],
             model_name=llm_model,
+            reserved_tokens=tool_tokens,
         )
         self.checkpointer = checkpointer if checkpointer is not None else MemorySaver()
         self.session_tree_manager = session_tree_manager if session_tree_manager is not None else SessionTreeManager()

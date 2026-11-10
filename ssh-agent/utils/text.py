@@ -1,5 +1,6 @@
 """文本处理与 Token 估算通用工具"""
 
+import json
 import re
 from typing import Any
 
@@ -77,7 +78,21 @@ class TokenBudgetEstimator:
         return int(zh_chars / 1.5 + other_chars / 3.5) + 1
 
     @classmethod
-    def estimate_messages_tokens(cls, messages: list[dict[str, Any]]) -> int:
+    def estimate_tools_tokens(cls, tools: list[dict[str, Any]] | None) -> int:
+        """估算 tools schema 的 Token 开销（JSON 序列化近似 + 单个工具的协议结构开销）"""
+        if not tools:
+            return 0
+        return sum(
+            cls.estimate_tokens(json.dumps(tool, ensure_ascii=False)) + 8
+            for tool in tools
+        )
+
+    @classmethod
+    def estimate_messages_tokens(
+        cls,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> int:
         total = 0
         for m in messages:
             content = m.get("content", "")
@@ -96,4 +111,5 @@ class TokenBudgetEstimator:
                 total += cls.estimate_tokens("".join(text_parts)) + image_count * 800 + 4
             else:
                 total += cls.estimate_tokens(content) + 4  # 角色与元数据基准开销
+        total += cls.estimate_tools_tokens(tools)
         return total

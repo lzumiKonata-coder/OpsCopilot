@@ -23,11 +23,17 @@ class SessionCompactor:
         max_summary_chars: int = 500,
         max_session_tokens: int | None = None,
         model_name: str | None = None,
+        reserved_tokens: int = 0,
     ):
         profile = resolve_context_profile(model_name)
         self.max_recent_turns = max_recent_turns if max_recent_turns is not None else profile["max_recent_turns"]
         self.max_summary_chars = max_summary_chars
-        self.max_session_tokens = max_session_tokens if max_session_tokens is not None else profile["max_session_tokens"]
+        base_session_tokens = (
+            max_session_tokens if max_session_tokens is not None else profile["max_session_tokens"]
+        )
+        # 预留固定上下文开销（如 tools schema），但至少保留 40% 预算避免过度压缩
+        self.reserved_tokens = max(0, reserved_tokens)
+        self.max_session_tokens = max(int(base_session_tokens * 0.4), base_session_tokens - self.reserved_tokens)
         self.estimator = TokenBudgetEstimator()
 
     def compact_session_history(

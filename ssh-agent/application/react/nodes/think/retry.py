@@ -48,16 +48,17 @@ class RetryActionMixin:
         )
         retry_conv = list(conversation)
         retry_conv.append({"role": "user", "content": correction_prompt})
+        tool_schemas = self.tool_registry.specs()
         retry_reply = await self._safe_llm_chat(
             retry_conv,
             temperature=0.1,
-            tools=self.tool_registry.specs(),
+            tools=tool_schemas,
             cancel_check=cancel_check,
         )
         retry_raw_calls, retry_reply_text = split_reply(retry_reply)
 
         llm_call_count += 1
-        retry_prompt_est = TokenBudgetEstimator.estimate_messages_tokens(retry_conv)
+        retry_prompt_est = TokenBudgetEstimator.estimate_messages_tokens(retry_conv, tools=tool_schemas)
         retry_reply_est = TokenBudgetEstimator.estimate_tokens(
             retry_reply_text or (str(retry_reply) if retry_reply else "")
         )

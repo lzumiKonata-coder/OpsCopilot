@@ -150,7 +150,8 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
         conversation = build_conversation(sys_prompt, prompt_content, images, clean_history)
 
         # Token 预算估算与运行时监控（使用当前调用局部独立的 compactor_stats，杜绝单例并发串号）
-        est_prompt_tokens = TokenBudgetEstimator.estimate_messages_tokens(conversation)
+        tool_schemas = self.tool_registry.specs()
+        est_prompt_tokens = TokenBudgetEstimator.estimate_messages_tokens(conversation, tools=tool_schemas)
         logger.info(
             "ReAct Step %d: estimated prompt tokens=%d (history_budget=%s, stats=%s)",
             step_idx,
@@ -176,7 +177,7 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
         reply = await self._safe_llm_chat(
             conversation,
             temperature=0.1,
-            tools=self.tool_registry.specs(),
+            tools=tool_schemas,
             on_token=handle_token if writer is not None else None,
             cancel_check=cancel_check,
         )
