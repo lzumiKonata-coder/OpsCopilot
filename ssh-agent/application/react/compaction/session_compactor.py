@@ -31,9 +31,10 @@ class SessionCompactor:
         base_session_tokens = (
             max_session_tokens if max_session_tokens is not None else profile["max_session_tokens"]
         )
-        # 预留固定上下文开销（如 tools schema），但至少保留 40% 预算避免过度压缩
-        self.reserved_tokens = max(0, reserved_tokens)
-        self.max_session_tokens = max(int(base_session_tokens * 0.4), base_session_tokens - self.reserved_tokens)
+        # 兼容外部/插件调用：保留旧参数，自行预留固定开销；引擎内部已改为共享池分配，不再传入
+        if reserved_tokens > 0:
+            base_session_tokens = max(int(base_session_tokens * 0.4), base_session_tokens - reserved_tokens)
+        self.max_session_tokens = base_session_tokens
         self.estimator = TokenBudgetEstimator()
 
     def compact_session_history(

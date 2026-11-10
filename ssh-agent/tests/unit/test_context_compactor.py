@@ -8,10 +8,13 @@
 5. ReAct 状态机引擎与上下文压缩器的端到端联动
 """
 
+import logging
+
 import pytest
 
+from adapter.tools.builtin import build_default_registry
 from application.ports import ILLMClient, ISSHGateway
-from application.react.compaction import ReActContextCompactor, SessionCompactor
+from application.react.compaction import ReActContextCompactor, SessionCompactor, resolve_context_profile
 from application.react.engine import LangGraphReActEngine
 from domain.entities import AuthType, Command, ExecutionResult, SSHConnection
 from utils.text import TokenBudgetEstimator, smart_truncate
@@ -559,4 +562,89 @@ def test_max_observation_chars_explicit_override_not_overwritten():
     assert engine.context_compactor.max_observation_chars == 2000
 
 
+def test_shared_context_pool_allocated_once_to_history_and_session():
+    """验证共享预算池只扣一次工具与输出开销，再按比例分配给两个历史消费方"""
+    registry = build_default_registry()
+
+    class MockModelClient:
+        model = "deepseek-chat"
+
+    engine = LangGraphReActEngine(llm_client=MockModelClient(), tool_registry=registry)
+    profile = resolve_context_profile("deepseek-chat")
+    pool = profile["context_pool_tokens"]
+    tool_tokens = TokenBudgetEstimator.estimate_tools_tokens(registry.specs())
+
+    available = pool - tool_tokens - profile["max_output_tokens"]
+    expected_history = int(available * 2 / 3)
+
+    assert engine.context_compactor.max_history_tokens == expected_history
+    assert engine.session_compactor.max_session_tokens == available - expected_history
+    # 两个消费方预算 + 固定开销恰好等于共享池，证明固定开销未被重复扣减
+    assert (
+        engine.context_compactor.max_history_tokens
+        + engine.session_compactor.max_session_tokens
+        + tool_tokens
+        + profile["max_output_tokens"]
+    ) == pool
+
+
+def test_shared_pool_keeps_floor_when_fixed_cost_exceeds_pool():
+    """验证工具 schema 过多时共享池仍保留最低预算，不会被压到 0"""
+    from application.react.compaction import allocate_context_budgets
+
+    profile = resolve_context_profile("standard")
+    pool = profile["context_pool_tokens"]
+
+    history_budget, session_budget = allocate_context_budgets(profile, tool_tokens=pool * 10)
+
+    assert history_budget + session_budget == int(pool * 0.4)
+    assert history_budget > 0
+    assert session_budget > 0
+
+
+def test_shared_pool_warns_when_fixed_cost_clamped(caplog):
+    """验证固定开销触发 40% 下限时输出告警，避免静默超窗"""
+    from application.react.compaction import allocate_context_budgets
+
+    profile = resolve_context_profile("standard")
+    pool = profile["context_pool_tokens"]
+
+    with caplog.at_level(logging.WARNING, logger="smartops.application.react.compaction.profiles"):
+        allocate_context_budgets(profile, tool_tokens=pool)
+
+    assert "clamped" in caplog.text
+
+
+def test_allocate_context_budgets_supports_legacy_profile():
+    """验证缺少共享池字段的旧画像仍可分配，不抛 KeyError"""
+    from application.react.compaction import allocate_context_budgets
+
+    history_budget, session_budget = allocate_context_budgets(
+        {"max_history_tokens": 3000, "max_session_tokens": 2000},
+        tool_tokens=0,
+    )
+
+    assert history_budget + session_budget == 5000
+
+
+def test_compactors_accept_reserved_tokens_for_backward_compatibility():
+    """验证外部调用仍可传入 reserved_tokens，不抛 TypeError 且按旧语义扣减"""
+    react_compactor = ReActContextCompactor(max_history_tokens=10000, reserved_tokens=2000)
+    session_compactor = SessionCompactor(max_session_tokens=5000, reserved_tokens=1000)
+
+    assert react_compactor.max_history_tokens == 8000
+    assert session_compactor.max_session_tokens == 4000
+
+
+def test_1m_profile_resolution_precedes_128k():
+    """验证 1M 画像优先匹配，避免 qwen2.5 等关键词抢先命中 128k 画像"""
+    for model in ("gemini-2.5-pro", "qwen2.5-1m", "custom-1m-model"):
+        profile = resolve_context_profile(model)
+        assert profile["max_history_tokens"] == 32000
+        assert profile["max_session_tokens"] == 16000
+        assert profile["max_output_tokens"] == 6000
+
+    # 非独立的 1m 片段不得误判为 1M 画像；qwen2.5-72b 仍应落在 128k
+    assert resolve_context_profile("custom-10m-model")["context_pool_tokens"] == 5500
+    assert resolve_context_profile("qwen2.5-72b")["context_pool_tokens"] == 24000
 

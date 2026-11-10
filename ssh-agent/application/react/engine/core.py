@@ -20,6 +20,7 @@ from application.ports import (
 from application.react.compaction import (
     ReActContextCompactor,
     SessionCompactor,
+    allocate_context_budgets,
     resolve_context_profile,
 )
 from application.react.engine.graph_builder import build_react_graph
@@ -109,22 +110,20 @@ class LangGraphReActEngine(
             if max_observation_chars is not None
             else profile["max_observation_chars"]
         )
-        eff_max_history_tokens = profile["max_history_tokens"]
 
-        # 工具 schema 随每次请求一同占用模型窗口，压缩预算需为其预留固定开销
+        # 共享输入预算池：工具 schema 与输出预留只扣一次，再统一分配给两个历史消费方
         tool_tokens = TokenBudgetEstimator.estimate_tools_tokens(self.tool_registry.specs())
+        step_history_budget, session_history_budget = allocate_context_budgets(profile, tool_tokens)
         self.context_compactor = context_compactor or ReActContextCompactor(
             window_size=eff_window_size,
             max_observation_chars=eff_max_obs,
-            max_history_tokens=eff_max_history_tokens,
+            max_history_tokens=step_history_budget,
             model_name=llm_model,
-            reserved_tokens=tool_tokens,
         )
         self.session_compactor = session_compactor or SessionCompactor(
             max_recent_turns=profile["max_recent_turns"],
-            max_session_tokens=profile["max_session_tokens"],
+            max_session_tokens=session_history_budget,
             model_name=llm_model,
-            reserved_tokens=tool_tokens,
         )
         self.checkpointer = checkpointer if checkpointer is not None else MemorySaver()
         self.session_tree_manager = session_tree_manager if session_tree_manager is not None else SessionTreeManager()

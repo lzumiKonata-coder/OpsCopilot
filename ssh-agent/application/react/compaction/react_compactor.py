@@ -36,9 +36,10 @@ class ReActContextCompactor:
         base_history_tokens = (
             max_history_tokens if max_history_tokens is not None else profile["max_history_tokens"]
         )
-        # 预留固定上下文开销（如 tools schema），但至少保留 40% 预算避免过度压缩
-        self.reserved_tokens = max(0, reserved_tokens)
-        self.max_history_tokens = max(int(base_history_tokens * 0.4), base_history_tokens - self.reserved_tokens)
+        # 兼容外部/插件调用：保留旧参数，自行预留固定开销；引擎内部已改为共享池分配，不再传入
+        if reserved_tokens > 0:
+            base_history_tokens = max(int(base_history_tokens * 0.4), base_history_tokens - reserved_tokens)
+        self.max_history_tokens = base_history_tokens
         self.min_recent_steps = max(1, min_recent_steps)
         self.estimator = TokenBudgetEstimator()
 
