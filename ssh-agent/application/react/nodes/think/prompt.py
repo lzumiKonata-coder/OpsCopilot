@@ -7,72 +7,83 @@ from application.react.observation import detect_interactive_prompt, is_empty_ob
 from domain.policies.intent import is_mutation_task
 
 
-def format_available_tools(tool_schemas: Sequence[dict[str, Any]]) -> str:
-    """把本轮路由后的工具 schema 渲染为提示词中的可用工具清单"""
-    lines: list[str] = []
-    for schema in tool_schemas:
-        function = schema.get("function") or {}
-        name = function.get("name")
-        if not name:
-            continue
-        description = str(function.get("description") or "").strip()
-        lines.append(f"     * {name}：{description}" if description else f"     * {name}")
-    if not lines:
-        return "     * 本轮未提供结构化工具，请使用纯文本 ReAct 格式输出。"
-    return "\n".join(lines)
+def build_system_prompt() -> str:
+    """构建静态系统提示词：不包含任何动态变量，保证 Prompt Cache 前缀稳定"""
+    return REACT_SYSTEM_PROMPT
 
 
-def build_system_prompt(
+def build_task_message(
     host: Any,
     is_root: bool,
     os_family: str,
     terminal_buffer: str,
     core_memories_text: str,
-    step_idx: int,
-    tool_schemas: Sequence[dict[str, Any]],
-) -> str:
-    """构建 ReAct 系统提示词（含终端快照、核心记忆与本轮可用工具清单）"""
-    if step_idx == 1:
-        term_snapshot = terminal_buffer.strip() if terminal_buffer else "当前终端暂无输出快照。"
-    else:
-        term_snapshot = f"已进入第 {step_idx} 步闭环推演，请参考下方客观执行与物理回显记录推进。"
-
-    sys_prompt = REACT_SYSTEM_PROMPT.format(
-        host_ip=host.host,
-        login_user=host.username,
-        is_root=str(is_root),
-        os_info=os_family,
-        terminal_buffer=term_snapshot,
-        available_tools=format_available_tools(tool_schemas),
+    user_prompt: str,
+    images: list[str],
+) -> dict[str, Any]:
+    """构建稳定的初始任务消息：运行时环境 + 核心记忆 + 排障目标"""
+    term_snapshot = terminal_buffer.strip() if terminal_buffer else "当前终端暂无输出快照。"
+    content = (
+        "【目标主机运行时环境】\n"
+        f"- 目标主机 IP: {host.host}\n"
+        f"- 登录用户名: {host.username} (root权限: {is_root})\n"
+        f"- 操作系统推断: {os_family}\n"
+        "- 当前最新终端快照:\n"
+        f"\"\"\"\n{term_snapshot}\n\"\"\"\n\n"
+        f"【运维排障目标】: {user_prompt}"
     )
     if core_memories_text:
-        sys_prompt += core_memories_text
-    return sys_prompt
+        content += core_memories_text
+
+    if images:
+        content += (
+            f"\n\n【多模态图片输入】：用户本轮随消息附带了 {len(images)} 张图片。\n"
+            "若用户的意图是描述、识别或分析图片内容，请直接输出 Final_Answer 回答，不要为此执行任何终端命令；\n"
+            "若图片与服务器排障相关（如截图报错、界面状态），再结合终端回显与你已执行的步骤进行分析。"
+        )
+        return {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": content},
+                *[
+                    {"type": "image_url", "image_url": {"url": img_url}}
+                    for img_url in images
+                ],
+            ],
+        }
+    return {"role": "user", "content": content}
 
 
-def build_user_prompt(
-    user_prompt: str,
+def build_step_message(
+    tool_schemas: Sequence[dict[str, Any]],
     step_idx: int,
-    history_text: str,
+    user_prompt: str,
     anti_loop_warning: str,
     has_encountered_error: bool,
     last_error_detail: str | None,
-    os_family: str,
-    is_root: bool,
     react_history: Sequence[Any],
     executed_steps: list[dict[str, Any]],
     is_plan_confirmed: bool,
     permission_mode: str,
     steering_texts: list[str],
-    images: list[str],
 ) -> tuple[str, str | None]:
-    """构建本轮用户提示词，返回 (提示词正文, 终端交互确认提示)"""
+    """构建最新一步的动态用户消息，返回 (消息正文, 终端交互确认提示)"""
+    tool_names = [
+        str((schema.get("function") or {}).get("name"))
+        for schema in tool_schemas
+        if (schema.get("function") or {}).get("name")
+    ]
+    available_tools = ", ".join(tool_names) if tool_names else "（无结构化工具，请使用纯文本 ReAct 格式）"
+
     prompt_content = (
-        f"【运维排障目标】: {user_prompt}\n\n"
-        f"【当前已推进的执行与观察记录】:\n{history_text}"
+        f"【当前步骤】: 第 {step_idx} 步。\n"
+        f"【本轮可用工具】: {available_tools}\n"
+        "请基于前序 assistant/tool 消息中的推演与物理回显，继续推进当前排障目标。"
     )
+
     if anti_loop_warning:
         prompt_content += anti_loop_warning
+
     if has_encountered_error and last_error_detail:
         prompt_content += (
             f"\n\n【紧急自愈指示】：\n"
@@ -132,42 +143,21 @@ def build_user_prompt(
             f"{joined_steering}\n"
         )
 
-    if images:
-        prompt_content += (
-            f"\n\n【多模态图片输入】：用户本轮随消息附带了 {len(images)} 张图片（已随本条多模态消息直接提供给你）。\n"
-            "若用户的意图是描述、识别或分析图片内容，请直接输出 Final_Answer 回答，不要为此执行任何终端命令；\n"
-            "若图片与服务器排障相关（如截图报错、界面状态），再结合终端回显与你已执行的步骤进行分析。"
-        )
-
     prompt_content += f"\n\n请严格按格式给出第 {step_idx} 步的 Thought 和 Action（若已查明或完成则给出 Final_Answer）："
     return prompt_content, interactive_hint
 
 
 def build_conversation(
-    sys_prompt: str,
-    prompt_content: str,
-    images: list[str],
-    clean_history: list[dict[str, Any]],
+    system_prompt: str,
+    session_history: list[dict[str, Any]],
+    task_message: dict[str, Any],
+    react_messages: list[dict[str, Any]],
+    step_message: str,
 ) -> list[dict[str, Any]]:
-    """构建本轮对话消息：系统提示 + 历史轮次 + 当前用户消息（含多模态图片块）"""
-    conversation: list[dict[str, Any]] = [{"role": "system", "content": sys_prompt}]
-    # 融入多轮历史对话上下文，消除上下文丢失断层并彻底剥离长篇排障报告污染
-    if clean_history:
-        for m in clean_history:
-            conversation.append({"role": m.get("role", "user"), "content": m.get("content", "")})
-    if images:
-        conversation.append(
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt_content},
-                    *[
-                        {"type": "image_url", "image_url": {"url": img_url}}
-                        for img_url in images
-                    ],
-                ],
-            }
-        )
-    else:
-        conversation.append({"role": "user", "content": prompt_content})
+    """构建只追加语义的对话：静态系统 + 会话历史 + 初始任务 + ReAct 历史 + 当前步骤"""
+    conversation: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+    conversation.extend(message for message in session_history if message)
+    conversation.append(task_message)
+    conversation.extend(message for message in react_messages if message)
+    conversation.append({"role": "user", "content": step_message})
     return conversation

@@ -19,23 +19,26 @@ class ToolCall:
 class LLMResponse(str):
     """
     大模型响应对象，同时继承 str 保证现有字符串消费逻辑完全平滑兼容。
-    提供结构化的 content 与 tool_calls。
+    提供结构化的 content、tool_calls 与 usage（含缓存命中统计）。
     """
     content: str | None
     tool_calls: list[ToolCall]
     reasoning_content: str | None
+    usage: dict[str, Any]
 
     def __new__(
         cls,
         content: str | None = None,
         tool_calls: list[ToolCall] | None = None,
         reasoning_content: str | None = None,
+        usage: dict[str, Any] | None = None,
     ):
         text = content if content is not None else ""
         instance = super().__new__(cls, text)
         instance.content = content
         instance.tool_calls = list(tool_calls or [])
         instance.reasoning_content = reasoning_content
+        instance.usage = dict(usage or {})
         return instance
 
 

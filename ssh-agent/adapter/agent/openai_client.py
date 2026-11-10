@@ -18,6 +18,58 @@ from config.settings import load_settings
 logger = logging.getLogger("smartops.agent.llm")
 
 
+def _to_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def normalize_usage(raw: Any) -> dict[str, Any]:
+    """
+    归一化不同上游的 usage 字段，统一暴露输入/输出/缓存命中统计。
+    兼容 OpenAI 的 prompt_tokens_details.cached_tokens、DeepSeek 的
+    prompt_cache_hit_tokens 以及 Anthropic 风格的 cache_read_input_tokens。
+    """
+    if not isinstance(raw, dict):
+        return {}
+
+    details = raw.get("prompt_tokens_details")
+    details = details if isinstance(details, dict) else {}
+    cached_raw = raw.get("prompt_cache_hit_tokens")
+    if cached_raw is None:
+        cached_raw = details.get("cached_tokens")
+    if cached_raw is None:
+        cached_raw = raw.get("cache_read_input_tokens")
+
+    prompt_tokens = _to_int(raw.get("prompt_tokens"))
+    cached_tokens = _to_int(cached_raw)
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": _to_int(raw.get("completion_tokens")),
+        "total_tokens": _to_int(raw.get("total_tokens")),
+        "cached_tokens": cached_tokens,
+        "cache_hit": cached_tokens > 0,
+        "cache_hit_rate": round(cached_tokens / prompt_tokens, 4) if prompt_tokens else 0.0,
+    }
+
+
+def _log_usage(stage: str, model: str, usage: dict[str, Any]) -> None:
+    """统一记录 Token 与缓存命中统计，便于观测 Prompt Caching 效果"""
+    if not usage:
+        return
+    logger.info(
+        "LLM usage [%s] model=%s prompt=%d completion=%d total=%d cached=%d hit_rate=%.2f%%",
+        stage,
+        model,
+        usage.get("prompt_tokens", 0),
+        usage.get("completion_tokens", 0),
+        usage.get("total_tokens", 0),
+        usage.get("cached_tokens", 0),
+        usage.get("cache_hit_rate", 0.0) * 100,
+    )
+
+
 class OpenAICompatibleLLMClient(ILLMClient):
     """
     OpenAI 协议兼容的 LLM 客户端实现
@@ -129,6 +181,8 @@ class OpenAICompatibleLLMClient(ILLMClient):
         }
         if tools:
             payload["tools"] = tools
+        # 请求上游在流式结束时回传 usage，用于统计 Token 与 Prompt Caching 命中情况
+        payload["stream_options"] = {"include_usage": True}
 
         enable_thinking = load_settings().llm_enable_thinking
         is_reasoning_model = any(k in self.model.lower() for k in ["glm-4.7", "deepseek-r1", "reasoner", "qwq"])
@@ -148,6 +202,7 @@ class OpenAICompatibleLLMClient(ILLMClient):
                         return
 
                     in_thinking = False
+                    stream_usage: dict[str, Any] = {}
                     async for line in response.aiter_lines():
                         line = line.strip()
                         if not line or line.startswith(":"):
@@ -158,6 +213,9 @@ class OpenAICompatibleLLMClient(ILLMClient):
                                 break
                             try:
                                 chunk_json = json.loads(data_str)
+                                chunk_usage = chunk_json.get("usage")
+                                if chunk_usage:
+                                    stream_usage = normalize_usage(chunk_usage)
                                 choices = chunk_json.get("choices", [])
                                 if choices:
                                     delta = choices[0].get("delta", {})
@@ -180,6 +238,8 @@ class OpenAICompatibleLLMClient(ILLMClient):
 
                     if in_thinking:
                         yield "</think>\n\n"
+
+                    _log_usage("chat.stream", self.model, stream_usage)
         except Exception as exc:
             logger.exception("Network exception during LLM streaming: %s", str(exc))
             yield f"> **OpsAgent 请求网络异常**: {str(exc)}"
@@ -216,6 +276,9 @@ class OpenAICompatibleLLMClient(ILLMClient):
         }
         if tools:
             payload["tools"] = tools
+        if on_token:
+            # 流式模式下请求上游回传 usage，用于统计缓存命中
+            payload["stream_options"] = {"include_usage": True}
 
         enable_thinking = load_settings().llm_enable_thinking
         is_reasoning_model = any(k in self.model.lower() for k in ["glm-4.7", "deepseek-r1", "reasoner", "qwq"])
@@ -237,6 +300,7 @@ class OpenAICompatibleLLMClient(ILLMClient):
                         content_parts: list[str] = []
                         reasoning_parts: list[str] = []
                         tool_calls_map: dict[int, dict[str, Any]] = {}
+                        stream_usage: dict[str, Any] = {}
 
                         async for line in response.aiter_lines():
                             line = line.strip()
@@ -248,6 +312,9 @@ class OpenAICompatibleLLMClient(ILLMClient):
                                     break
                                 try:
                                     chunk_json = json.loads(data_str)
+                                    chunk_usage = chunk_json.get("usage")
+                                    if chunk_usage:
+                                        stream_usage = normalize_usage(chunk_usage)
                                     choices = chunk_json.get("choices") or []
                                     if not choices:
                                         continue
@@ -320,10 +387,12 @@ class OpenAICompatibleLLMClient(ILLMClient):
                                 )
                             )
 
+                        _log_usage("react.stream", self.model, stream_usage)
                         return LLMResponse(
                             content=full_content,
                             tool_calls=tool_calls,
                             reasoning_content=full_reasoning,
+                            usage=stream_usage,
                         )
 
                 # 非流式直接请求
@@ -334,9 +403,10 @@ class OpenAICompatibleLLMClient(ILLMClient):
                     return LLMResponse(content=f"> **大模型上游接口请求异常 (HTTP {response.status_code})**\n>\n> {err_text}")
 
                 res_json = response.json()
+                usage = normalize_usage(res_json.get("usage"))
                 choices = res_json.get("choices") or []
                 if not choices:
-                    return LLMResponse(content="")
+                    return LLMResponse(content="", usage=usage)
 
                 msg = choices[0].get("message") or {}
                 content = msg.get("content")
@@ -364,10 +434,12 @@ class OpenAICompatibleLLMClient(ILLMClient):
                     )
 
                 reasoning = msg.get("reasoning_content") or msg.get("reasoning")
+                _log_usage("react.chat", self.model, usage)
                 return LLMResponse(
                     content=content,
                     tool_calls=tool_calls,
                     reasoning_content=reasoning,
+                    usage=usage,
                 )
         except Exception as exc:
             logger.exception("Network exception during LLM chat: %s", str(exc))

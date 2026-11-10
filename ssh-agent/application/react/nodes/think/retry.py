@@ -57,6 +57,16 @@ class RetryActionMixin:
         )
         retry_raw_calls, retry_reply_text = split_reply(retry_reply)
 
+        usage = getattr(retry_reply, "usage", None) or {}
+        if usage:
+            logger.info(
+                "ReAct Step %d retry cache stats: prompt=%d cached=%d hit_rate=%.2f%%",
+                step_idx,
+                usage.get("prompt_tokens", 0),
+                usage.get("cached_tokens", 0),
+                usage.get("cache_hit_rate", 0.0) * 100,
+            )
+
         llm_call_count += 1
         retry_prompt_est = TokenBudgetEstimator.estimate_messages_tokens(retry_conv, tools=tool_schemas)
         retry_reply_est = TokenBudgetEstimator.estimate_tokens(

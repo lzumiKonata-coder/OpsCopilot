@@ -60,6 +60,8 @@ class PlanConfirmationMixin:
         step_title: str | None,
         llm_call_count: int,
         total_tokens: int,
+        react_messages: list[dict[str, Any]] | None = None,
+        react_compacted_upto_step: int = 0,
     ) -> dict[str, Any]:
         """构造前置方案确认的审批挂起返回"""
         session_id = state.get("session_id") or ""
@@ -99,6 +101,8 @@ class PlanConfirmationMixin:
             "current_plan": final_plan,
             "pending_approval_id": approval_id,
             "blocked_reason": f"执行变更任务【{user_prompt}】前置方案确认",
+            "react_messages": react_messages or [],
+            "react_compacted_upto_step": react_compacted_upto_step,
             "llm_call_count": llm_call_count,
             "total_tokens": total_tokens,
             "emitted_events": [thought_ev, approval_ev],

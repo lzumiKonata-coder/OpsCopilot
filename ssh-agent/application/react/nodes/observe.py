@@ -25,6 +25,7 @@ class ObserveAndReflectNodeMixin:
         last_error_detail = state.get("last_error_detail")
         executed_steps = list(state.get("executed_steps") or [])
         react_history = list(state.get("react_history") or [])
+        react_messages = list(state.get("react_messages") or [])
 
         tool_name = state.get("current_tool_name")
         tool_args = state.get("current_tool_args") or {}
@@ -148,6 +149,11 @@ class ObserveAndReflectNodeMixin:
             f"- Observation:\n{clean_obs}\n"
             f"- Reflection: {analysis}"
         )
+        # 追加式消息历史：Observation 作为独立消息追加，后续轮次不再重写历史前缀
+        react_messages.append({
+            "role": "user",
+            "content": f"Observation:\n{clean_obs or '(无回显)'}\n\nReflection: {analysis}",
+        })
 
         # 连续失败熔断保护（防止死循环）
         should_stop = False
@@ -165,6 +171,7 @@ class ObserveAndReflectNodeMixin:
             "is_step_normal": is_step_normal,
             "executed_steps": executed_steps,
             "react_history": react_history,
+            "react_messages": react_messages,
             "should_stop": should_stop,
             "emitted_events": [reflect_ev],
         }

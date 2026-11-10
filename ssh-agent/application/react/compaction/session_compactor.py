@@ -51,6 +51,10 @@ class SessionCompactor:
         cleaned: list[dict[str, str]] = []
         clean_curr = (current_user_prompt or "").strip()
 
+        # 惰性压缩：未达到 Token 阈值时原样返回，避免每轮重写历史前缀破坏 Prompt Cache
+        if self.estimator.estimate_messages_tokens(session_history) <= self.max_session_tokens:
+            return list(session_history)
+
         for m in session_history:
             role = m.get("role", "user")
             raw_c = (m.get("content") or "").strip()

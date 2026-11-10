@@ -4,9 +4,10 @@ SmartOps OpsAgent 领域实体与 LLM 适配层单元测试
 
 import pytest
 
-from adapter.agent.openai_client import OpenAICompatibleLLMClient
+from adapter.agent.openai_client import OpenAICompatibleLLMClient, normalize_usage
 from adapter.repository.db_engine import get_session_factory
 from adapter.repository import SQLAlchemySSHConnectionRepository
+from application.ports import LLMResponse
 from application.prompts import SYSTEM_PROMPT_TEMPLATE
 from application.usecases.chat import ChatWithOpsAgentUseCase
 from domain.entities import AuthType, ChatMessage, ChatSession, SSHConnection
@@ -176,3 +177,31 @@ async def test_llm_client_fallback_intent_routing():
     assert "### 1. 根因分析" in ops_text
     assert "```bash" in ops_text
     assert "df -h" in ops_text
+
+
+def test_normalize_usage_extracts_cache_hit_tokens():
+    """验证不同上游的缓存命中字段被统一归一化，并挂载到 LLMResponse"""
+    deepseek_usage = normalize_usage({
+        "prompt_tokens": 1000,
+        "completion_tokens": 100,
+        "total_tokens": 1100,
+        "prompt_cache_hit_tokens": 800,
+        "prompt_cache_miss_tokens": 200,
+    })
+    openai_usage = normalize_usage({
+        "prompt_tokens": 1000,
+        "completion_tokens": 100,
+        "total_tokens": 1100,
+        "prompt_tokens_details": {"cached_tokens": 400},
+    })
+
+    assert deepseek_usage["cached_tokens"] == 800
+    assert deepseek_usage["cache_hit"] is True
+    assert deepseek_usage["cache_hit_rate"] == 0.8
+    assert openai_usage["cached_tokens"] == 400
+    assert openai_usage["cache_hit_rate"] == 0.4
+    assert normalize_usage(None) == {}
+
+    response = LLMResponse(content="ok", usage=deepseek_usage)
+    assert response.usage["cached_tokens"] == 800
+    assert LLMResponse(content="ok").usage == {}

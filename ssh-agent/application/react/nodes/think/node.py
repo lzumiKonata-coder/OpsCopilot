@@ -17,7 +17,12 @@ from .convergence import ConvergenceMixin
 from .guards import check_budget, check_loop_guard, check_step_limit
 from .llm import parse_tool_calls, resolve_text_response, resolve_tool_call, split_reply
 from .plan import PlanConfirmationMixin
-from .prompt import build_conversation, build_system_prompt, build_user_prompt
+from .prompt import (
+    build_conversation,
+    build_step_message,
+    build_system_prompt,
+    build_task_message,
+)
 from .retry import RetryActionMixin
 
 logger = logging.getLogger("smartops.application.react.nodes.think")
@@ -126,39 +131,59 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
             if schema.get("function", {}).get("name")
         }
 
-        sys_prompt = build_system_prompt(
+        sys_prompt = build_system_prompt()
+        task_message = build_task_message(
             host=host,
             is_root=is_root,
             os_family=os_family,
             terminal_buffer=terminal_buffer,
             core_memories_text=core_memories_text,
-            step_idx=step_idx,
-            tool_schemas=tool_schemas,
-        )
-        history_text, compactor_stats = self.context_compactor.format_prompt_history_with_stats(
-            executed_steps=executed_steps,
-            raw_react_history=react_history,
-        )
-        prompt_content, interactive_hint = build_user_prompt(
             user_prompt=user_prompt,
+            images=images,
+        )
+        step_message, interactive_hint = build_step_message(
+            tool_schemas=tool_schemas,
             step_idx=step_idx,
-            history_text=history_text,
+            user_prompt=user_prompt,
             anti_loop_warning=anti_loop_warning,
             has_encountered_error=has_encountered_error,
             last_error_detail=last_error_detail,
-            os_family=os_family,
-            is_root=is_root,
             react_history=react_history,
             executed_steps=executed_steps,
             is_plan_confirmed=is_plan_confirmed,
             permission_mode=permission_mode,
             steering_texts=steering_texts,
-            images=images,
         )
+
+        # 追加式 ReAct 消息历史：仅在跨越步数窗口或超出 Token 预算时做惰性折叠
+        react_messages = list(state.get("react_messages") or [])
+        react_compacted_upto = state.get("react_compacted_upto_step", 0)
+        react_tokens = TokenBudgetEstimator.estimate_messages_tokens(react_messages)
+        needs_react_compaction = bool(executed_steps) and (
+            len(executed_steps) - react_compacted_upto > self.context_compactor.window_size
+            or react_tokens > self.context_compactor.max_history_tokens
+        )
+        compactor_stats: dict[str, Any] = {"total_tokens": react_tokens, "compressed": False}
+        if needs_react_compaction:
+            history_text, compactor_stats = self.context_compactor.format_prompt_history_with_stats(
+                executed_steps=executed_steps,
+                raw_react_history=[],
+            )
+            react_messages = [
+                {"role": "assistant", "content": "【前序排查步骤已折叠为结构化事实小结】"},
+                {"role": "user", "content": history_text},
+            ]
+            react_compacted_upto = len(executed_steps)
 
         # 融入多轮历史对话上下文，消除上下文丢失断层并彻底剥离长篇排障报告污染
         clean_history = self.session_compactor.compact_session_history(session_history, user_prompt)
-        conversation = build_conversation(sys_prompt, prompt_content, images, clean_history)
+        conversation = build_conversation(
+            sys_prompt,
+            clean_history,
+            task_message,
+            react_messages,
+            step_message,
+        )
 
         # Token 预算估算与运行时监控（使用当前调用局部独立的 compactor_stats，杜绝单例并发串号）
         est_prompt_tokens = TokenBudgetEstimator.estimate_messages_tokens(conversation, tools=tool_schemas)
@@ -195,6 +220,16 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
 
         if thought_filter:
             thought_filter.close()
+
+        usage = getattr(reply, "usage", None) or {}
+        if usage:
+            logger.info(
+                "ReAct Step %d cache stats: prompt=%d cached=%d hit_rate=%.2f%%",
+                step_idx,
+                usage.get("prompt_tokens", 0),
+                usage.get("cached_tokens", 0),
+                usage.get("cache_hit_rate", 0.0) * 100,
+            )
 
         # 优先提取原生结构化 Tool Calling，无 Tool Calls 则平滑回退至纯文本正则解析
         raw_calls, reply_text = split_reply(reply)
@@ -262,6 +297,10 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
 
         # 检查是否为前置方案确认状态（Step 1 针对变更/高危任务输出执行思路并征询用户开始执行）
         if self._check_plan_confirmation(state, step_idx, user_prompt, thought, command, final_answer, plan):
+            react_messages.append({
+                "role": "assistant",
+                "content": (reply_text or "").strip() or f"Thought: {thought}",
+            })
             return self._build_plan_confirmation_response(
                 state=state,
                 step_idx=step_idx,
@@ -271,6 +310,8 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
                 step_title=step_title,
                 llm_call_count=llm_call_count,
                 total_tokens=total_tokens,
+                react_messages=react_messages,
+                react_compacted_upto_step=react_compacted_upto,
             )
 
         # 丢失 Action 自动单步纠错补偿
@@ -315,6 +356,13 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
             if query_result is not None:
                 return query_result
 
+        react_messages.append({
+            "role": "assistant",
+            "content": (reply_text or "").strip() or (
+                f"Thought: {thought}" + (f"\nAction: {command}" if command else "")
+            ),
+        })
+
         return self._finalize_response(
             step_idx=step_idx,
             user_prompt=user_prompt,
@@ -331,4 +379,6 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
             llm_call_count=llm_call_count,
             total_tokens=total_tokens,
             allowed_tool_names=sorted(allowed_tool_names),
+            react_messages=react_messages,
+            react_compacted_upto_step=react_compacted_upto,
         )

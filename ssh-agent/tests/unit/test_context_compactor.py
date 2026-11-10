@@ -162,7 +162,7 @@ def test_react_context_compactor_exceeding_window():
 
 def test_session_compactor_multi_turn():
     """验证跨多轮历史会话压缩：长历史浓缩为前序小结，保留最近活跃多轮"""
-    compactor = SessionCompactor(max_recent_turns=3)
+    compactor = SessionCompactor(max_recent_turns=2, max_session_tokens=100)
 
     session_history = [
         {"role": "user", "content": "排查为什么 80 端口打不开？"},
@@ -177,8 +177,8 @@ def test_session_compactor_multi_turn():
 
     compacted = compactor.compact_session_history(session_history, current_user_prompt="现在网络通吗？")
 
-    # 保留最近 3 条 + 1 条前序折叠小结 = 4 条
-    assert len(compacted) == 4
+    # 保留最近 2 条 + 1 条前序折叠小结 = 3 条
+    assert len(compacted) == 3
     first_msg = compacted[0]
     assert first_msg["role"] == "assistant"
     assert "[前序多轮会话历史小结]" in first_msg["content"]
@@ -186,7 +186,6 @@ def test_session_compactor_multi_turn():
 
     # 验证最近轮次被保留
     recent_contents = [m["content"] for m in compacted[1:]]
-    assert any("内存" in c for c in recent_contents)
     assert any("CPU" in c for c in recent_contents)
 
 
@@ -227,6 +226,75 @@ class DummySSHGateway(ISSHGateway):
 
     async def test_connection(self, host: SSHConnection) -> bool:
         return True
+
+
+@pytest.mark.asyncio
+async def test_prompt_prefix_stable_and_append_only():
+    """验证静态 system 与初始任务消息跨步骤一致，ReAct 历史只追加不重写"""
+
+    class RecordingLLM(ILLMClient):
+        def __init__(self):
+            self.calls: list[list] = []
+            self.tools: list = []
+            self.responses = [
+                "Thought: 查看第一步。\nAction: df -h\nStep_Title: 步骤1",
+                "Thought: 查看第二步。\nAction: free -m\nStep_Title: 步骤2",
+                "Thought: 完成。\nFinal_Answer: 指标正常。",
+            ]
+            self.call_count = 0
+
+        async def chat(self, messages: list, temperature: float = 0.2, tools: list | None = None) -> str:
+            self.calls.append(messages)
+            self.tools.append(tools)
+            idx = min(self.call_count, len(self.responses) - 1)
+            self.call_count += 1
+            return self.responses[idx]
+
+        async def stream_chat(self, messages: list):
+            yield await self.chat(messages)
+
+    llm = RecordingLLM()
+    engine = LangGraphReActEngine(llm_client=llm, ssh_gateway=DummySSHGateway())
+    host = SSHConnection(
+        name="cache-host",
+        host="127.0.0.1",
+        port=22,
+        username="root",
+        auth_type=AuthType.PASSWORD,
+        password="pwd",
+    )
+    initial_state = {
+        "host": host,
+        "user_prompt": "巡检系统综合健康度",
+        "max_steps": 3,
+        "step_idx": 1,
+        "session_history": [],
+        "executed_steps": [],
+        "react_messages": [],
+        "react_compacted_upto_step": 0,
+        "planned_steps_queue": [],
+        "react_history": [],
+        "has_encountered_error": False,
+        "consecutive_errors": 0,
+        "emitted_events": [],
+    }
+
+    async for _ in engine.build_graph().astream(initial_state, stream_mode="updates"):
+        pass
+
+    assert len(llm.calls) >= 2
+    first_call, second_call = llm.calls[0], llm.calls[1]
+
+    # 静态 system 与初始任务消息在两次调用中完全一致
+    assert first_call[0] == second_call[0]
+    assert first_call[1] == second_call[1]
+    # 历史只追加：第二次调用在稳定前缀后新增 assistant 与 observation 消息
+    assert second_call[:2] == first_call[:2]
+    assert second_call[2]["role"] == "assistant"
+    assert second_call[3]["role"] == "user"
+    assert "Observation:" in second_call[3]["content"]
+    # 本任务内工具集合保持稳定
+    assert llm.tools[0] == llm.tools[1]
 
 
 @pytest.mark.asyncio
@@ -284,11 +352,10 @@ async def test_react_engine_context_compaction_integration():
     assert last_state.get("final_conclusion") is not None
     assert len(last_state.get("executed_steps", [])) >= 3
 
-    # 验证在第 4 次调用 LLM 时（前序已有 3 步，超出 window_size=2），提示词中已被压缩小结折叠
+    # 验证在后续 LLM 调用中，追加式消息历史已被压缩小结折叠
     assert len(mock_llm.recorded_prompts) >= 4
-    fourth_prompt = mock_llm.recorded_prompts[3]
-    assert "历史排查阶段性小结" in fourth_prompt
-    assert "近期详细推演与物理回显 (活跃窗口)" in fourth_prompt
+    assert any("历史排查阶段性小结" in p for p in mock_llm.recorded_prompts)
+    assert any("近期详细推演与物理回显 (活跃窗口)" in p for p in mock_llm.recorded_prompts)
 
     # 验证超长回显被智能截断，包含省略提示
     second_step_obs = last_state["executed_steps"][1]["observation"]

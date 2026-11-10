@@ -161,9 +161,10 @@ async def test_react_root_context_dynamic_correction():
             pass
 
         assert len(llm.captured) == 2
-        assert "root权限: False" in llm.captured[0][0]["content"]
-        # 第一步回显携带 [root@hadoop100 ~]# 提示符，第二步 Prompt 必须修正为 root
-        assert "root权限: True" in llm.captured[1][0]["content"]
+        # 运行时环境位于稳定的任务消息中（system 之后的第一条 user 消息）
+        assert "root权限: False" in llm.captured[0][1]["content"]
+        # 第一步回显携带 [root@hadoop100 ~]# 提示符，第二步任务消息必须修正为 root
+        assert "root权限: True" in llm.captured[1][1]["content"]
 
 
 @pytest.mark.asyncio
@@ -363,7 +364,9 @@ async def test_react_images_are_sent_as_multimodal_message():
             pass
 
         assert llm.messages, "大模型必须被调用"
-        user_message = llm.messages[0][-1]
+        user_message = next(
+            m for m in llm.messages[0] if isinstance(m.get("content"), list)
+        )
         assert isinstance(user_message["content"], list), "带图片时用户消息必须是多模态内容块"
         image_blocks = [p for p in user_message["content"] if p.get("type") == "image_url"]
         assert image_blocks, "多模态消息中必须包含 image_url 内容块"

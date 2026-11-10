@@ -77,6 +77,8 @@ class ConvergenceMixin:
         llm_call_count: int,
         total_tokens: int,
         allowed_tool_names: list[str] | None = None,
+        react_messages: list[dict[str, Any]] | None = None,
+        react_compacted_upto_step: int = 0,
     ) -> dict[str, Any]:
         """交互悬挂兜底、最终收敛判定与命令下发返回"""
         # 核心防悬挂保护：若终端正停留在交互确认提示符或未闭合续行符中，但模型由于格式偏差未输出 command
@@ -200,6 +202,8 @@ class ConvergenceMixin:
             "current_tool_call_id": f"call_{uuid.uuid4().hex}" if effective_tool_name else None,
             "current_tool_args": current_tool_args or ({"command": command} if command else None),
             "allowed_tool_names": allowed_tool_names or [],
+            "react_messages": react_messages or [],
+            "react_compacted_upto_step": react_compacted_upto_step,
             "llm_call_count": llm_call_count,
             "total_tokens": total_tokens,
             "emitted_events": [*steering_events, thought_ev],

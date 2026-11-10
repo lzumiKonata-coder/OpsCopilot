@@ -19,6 +19,8 @@ class ReActGraphState(TypedDict, total=False):
     core_memories_text: str
     session_history: list[dict[str, str]]
     allowed_tool_names: list[str]
+    react_messages: list[dict[str, Any]]
+    react_compacted_upto_step: int
 
     # 权限与审批
     permission_mode: str

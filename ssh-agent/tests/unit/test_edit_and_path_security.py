@@ -275,7 +275,7 @@ async def test_react_engine_blocks_edit_forbidden_path():
 
 @pytest.mark.asyncio
 async def test_dynamic_terminal_buffer_in_node_think():
-    """验证在 _node_think 中动态终端快照只在第一轮注入，后续轮次仅保留轻量 step 标识"""
+    """验证终端快照位于稳定的任务消息中，动态步骤消息不再重复携带快照"""
     host = SSHConnection(
         name="test-host",
         host="127.0.0.1",
@@ -285,12 +285,11 @@ async def test_dynamic_terminal_buffer_in_node_think():
         password="pwd",
     )
 
-    captured_system_prompts = []
+    captured_messages = []
 
     class MockCaptureLLM(ILLMClient):
         async def chat(self, messages: list[dict], temperature: float = 0.1, tools: list[dict] | None = None) -> dict:
-            sys_msg = messages[0]["content"]
-            captured_system_prompts.append(sys_msg)
+            captured_messages.append(messages)
             return {
                 "role": "assistant",
                 "content": "Thought: 检查系统状态\nAction: uname -a\nStep_Title: 检查系统内核",
@@ -311,9 +310,10 @@ async def test_dynamic_terminal_buffer_in_node_think():
     }
     await engine._node_think(state_step_1)
 
-    assert len(captured_system_prompts) == 1
-    sys_prompt_step_1 = captured_system_prompts[0]
-    assert "LAST_LOGIN: 2026-10-31 12:00:00" in sys_prompt_step_1
+    assert len(captured_messages) == 1
+    # system 消息保持纯静态，运行时环境位于稳定的任务消息中
+    assert "LAST_LOGIN: 2026-10-31 12:00:00" not in captured_messages[0][0]["content"]
+    assert "LAST_LOGIN: 2026-10-31 12:00:00" in captured_messages[0][1]["content"]
 
     # 第 2 轮测试
     state_step_2: ReActGraphState = {
@@ -326,8 +326,11 @@ async def test_dynamic_terminal_buffer_in_node_think():
     }
     await engine._node_think(state_step_2)
 
-    assert len(captured_system_prompts) == 2
-    sys_prompt_step_2 = captured_system_prompts[1]
-    # 第 2 轮中不重复附带庞大的终端屏幕快照，仅输出闭环推演引导
-    assert "LAST_LOGIN: 2026-10-31 12:00:00" not in sys_prompt_step_2
-    assert "已进入第 2 步闭环推演" in sys_prompt_step_2
+    assert len(captured_messages) == 2
+    step_2_messages = captured_messages[1]
+    # 任务消息保持稳定，仍携带终端快照
+    assert "LAST_LOGIN: 2026-10-31 12:00:00" in step_2_messages[1]["content"]
+    # 最新步骤消息只包含轻量步骤状态，不重复附带庞大快照
+    latest_step_message = step_2_messages[-1]["content"]
+    assert "第 2 步" in latest_step_message
+    assert "LAST_LOGIN: 2026-10-31 12:00:00" not in latest_step_message
