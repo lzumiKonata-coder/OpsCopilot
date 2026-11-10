@@ -76,6 +76,7 @@ class ConvergenceMixin:
         current_tool_args: dict[str, Any] | None,
         llm_call_count: int,
         total_tokens: int,
+        allowed_tool_names: list[str] | None = None,
     ) -> dict[str, Any]:
         """交互悬挂兜底、最终收敛判定与命令下发返回"""
         # 核心防悬挂保护：若终端正停留在交互确认提示符或未闭合续行符中，但模型由于格式偏差未输出 command
@@ -186,7 +187,11 @@ class ConvergenceMixin:
             "title": step_title,
             "command": command,
         }
-        effective_tool_name = current_tool_name or ("execute_ssh_command" if command else None)
+        effective_tool_name = current_tool_name
+        if not effective_tool_name and command:
+            # 纯文本兜底仅在基线工具确实在本轮路由清单内时才标记为 execute_ssh_command
+            if allowed_tool_names is None or "execute_ssh_command" in allowed_tool_names:
+                effective_tool_name = "execute_ssh_command"
         return {
             "current_thought": thought,
             "current_command": command,
@@ -194,6 +199,7 @@ class ConvergenceMixin:
             "current_tool_name": effective_tool_name,
             "current_tool_call_id": f"call_{uuid.uuid4().hex}" if effective_tool_name else None,
             "current_tool_args": current_tool_args or ({"command": command} if command else None),
+            "allowed_tool_names": allowed_tool_names or [],
             "llm_call_count": llm_call_count,
             "total_tokens": total_tokens,
             "emitted_events": [*steering_events, thought_ev],

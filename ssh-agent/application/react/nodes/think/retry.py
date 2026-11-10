@@ -30,6 +30,7 @@ class RetryActionMixin:
         llm_call_count: int,
         total_tokens: int,
         cancel_check: Any | None,
+        tool_schemas: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """丢失 Action 时自动单步纠错补偿，返回更新后的推演结果"""
         if any(k in thought for k in ["已安装", "无需", "最新版本", "已经存在", "正常运行", "目标达成"]):
@@ -48,7 +49,6 @@ class RetryActionMixin:
         )
         retry_conv = list(conversation)
         retry_conv.append({"role": "user", "content": correction_prompt})
-        tool_schemas = self.tool_registry.specs()
         retry_reply = await self._safe_llm_chat(
             retry_conv,
             temperature=0.1,
@@ -65,6 +65,11 @@ class RetryActionMixin:
         total_tokens += (retry_prompt_est + retry_reply_est)
 
         retry_tool_calls = parse_tool_calls(retry_raw_calls)
+        allowed_tool_names = {
+            schema.get("function", {}).get("name")
+            for schema in tool_schemas
+            if schema.get("function", {}).get("name")
+        }
 
         if retry_tool_calls:
             rt_first = retry_tool_calls[0]
@@ -77,6 +82,7 @@ class RetryActionMixin:
                 step_idx,
                 fallback_thought=thought,
                 fallback_to_args=False,
+                allowed_tool_names=allowed_tool_names,
             )
             if invocation is not None:
                 thought = invocation["thought"]

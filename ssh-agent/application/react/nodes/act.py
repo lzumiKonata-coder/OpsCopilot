@@ -30,6 +30,37 @@ class ActNodeMixin:
         operation = tool.spec.operation if tool is not None else ToolOperation.COMMAND
         session_id = state.get("session_id") or ""
 
+        # 工具白名单防御：若非法工具绕过 Think 落到执行节点，降级为纯文本命令通道
+        allowed_tool_names = state.get("allowed_tool_names")
+        if tool_name and allowed_tool_names and tool_name not in allowed_tool_names:
+            logger.warning(
+                "Act node rejected tool '%s' outside routed whitelist %s",
+                tool_name,
+                sorted(allowed_tool_names),
+            )
+            if not command:
+                display_obs = (
+                    f"[工具调用被拒绝] 工具 `{tool_name}` 不在本轮路由白名单内，"
+                    f"且未提供可降级的纯文本命令。请改用当前可用工具或输出 Action 文本。"
+                )
+                obs_ev = {
+                    "type": "observation",
+                    "step": step_idx,
+                    "output": display_obs,
+                    "stdout": display_obs,
+                    "content": display_obs,
+                    "raw_output": display_obs,
+                }
+                return {
+                    "current_observation": display_obs,
+                    "is_root": is_root_user,
+                    "emitted_events": [obs_ev],
+                }
+            tool = None
+            tool_args = {}
+            tool_name = None
+            operation = ToolOperation.COMMAND
+
         # 软预算上限守卫：检查整场任务剩余可用时长
         start_time = state.get("start_time") or time.time()
         max_run_seconds = state.get("max_run_seconds") or 600.0

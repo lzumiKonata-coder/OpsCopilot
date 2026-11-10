@@ -47,11 +47,17 @@ def resolve_tool_call(
     step_idx: int,
     fallback_thought: str,
     fallback_to_args: bool = True,
+    allowed_tool_names: set[str] | None = None,
 ) -> dict[str, Any] | None:
-    """归一化工具调用参数；未注册工具可按原始参数兜底解析"""
+    """归一化工具调用参数；白名单外或未注册工具按调用方要求降级"""
     name = tool_call.get("name")
     args = tool_call.get("arguments") or {}
+
     tool = tool_registry.get(name)
+
+    # 动态路由白名单校验：仅拦截“已注册但本轮未路由”的工具；未注册工具沿用纯文本兜底语义
+    if tool is not None and allowed_tool_names is not None and name not in allowed_tool_names:
+        return None
 
     if tool is not None:
         invocation = tool.normalize(args, step_idx, fallback_thought=fallback_thought)

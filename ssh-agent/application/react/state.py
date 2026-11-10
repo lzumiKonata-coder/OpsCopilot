@@ -18,6 +18,7 @@ class ReActGraphState(TypedDict, total=False):
     is_root: bool
     core_memories_text: str
     session_history: list[dict[str, str]]
+    allowed_tool_names: list[str]
 
     # 权限与审批
     permission_mode: str

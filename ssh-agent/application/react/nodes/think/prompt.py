@@ -7,6 +7,21 @@ from application.react.observation import detect_interactive_prompt, is_empty_ob
 from domain.policies.intent import is_mutation_task
 
 
+def format_available_tools(tool_schemas: Sequence[dict[str, Any]]) -> str:
+    """把本轮路由后的工具 schema 渲染为提示词中的可用工具清单"""
+    lines: list[str] = []
+    for schema in tool_schemas:
+        function = schema.get("function") or {}
+        name = function.get("name")
+        if not name:
+            continue
+        description = str(function.get("description") or "").strip()
+        lines.append(f"     * {name}：{description}" if description else f"     * {name}")
+    if not lines:
+        return "     * 本轮未提供结构化工具，请使用纯文本 ReAct 格式输出。"
+    return "\n".join(lines)
+
+
 def build_system_prompt(
     host: Any,
     is_root: bool,
@@ -14,8 +29,9 @@ def build_system_prompt(
     terminal_buffer: str,
     core_memories_text: str,
     step_idx: int,
+    tool_schemas: Sequence[dict[str, Any]],
 ) -> str:
-    """构建 ReAct 系统提示词（含终端快照与核心记忆）"""
+    """构建 ReAct 系统提示词（含终端快照、核心记忆与本轮可用工具清单）"""
     if step_idx == 1:
         term_snapshot = terminal_buffer.strip() if terminal_buffer else "当前终端暂无输出快照。"
     else:
@@ -27,6 +43,7 @@ def build_system_prompt(
         is_root=str(is_root),
         os_info=os_family,
         terminal_buffer=term_snapshot,
+        available_tools=format_available_tools(tool_schemas),
     )
     if core_memories_text:
         sys_prompt += core_memories_text

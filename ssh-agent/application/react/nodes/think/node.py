@@ -9,6 +9,7 @@ from langgraph.types import StreamWriter
 from application.react.cancel_context import get_cancel_check
 from application.react.state import ReActGraphState
 from application.react.streaming import StreamingThoughtFilter
+from application.react.tool_router import build_routing_query, route_tools
 from domain.policies.intent import is_mutation_task
 from utils.text import TokenBudgetEstimator
 
@@ -116,6 +117,15 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
         is_plan_confirmed = state.get("is_plan_confirmed", False)
         permission_mode = state.get("permission_mode", "request_approval")
 
+        # 动态工具路由：仅向模型暴露与当前步骤相关的工具，降低 schema 开销与误选
+        routing_query = build_routing_query(user_prompt, executed_steps, steering_texts)
+        tool_schemas = route_tools(self.tool_registry.specs(), routing_query)
+        allowed_tool_names = {
+            schema.get("function", {}).get("name")
+            for schema in tool_schemas
+            if schema.get("function", {}).get("name")
+        }
+
         sys_prompt = build_system_prompt(
             host=host,
             is_root=is_root,
@@ -123,6 +133,7 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
             terminal_buffer=terminal_buffer,
             core_memories_text=core_memories_text,
             step_idx=step_idx,
+            tool_schemas=tool_schemas,
         )
         history_text, compactor_stats = self.context_compactor.format_prompt_history_with_stats(
             executed_steps=executed_steps,
@@ -150,14 +161,14 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
         conversation = build_conversation(sys_prompt, prompt_content, images, clean_history)
 
         # Token 预算估算与运行时监控（使用当前调用局部独立的 compactor_stats，杜绝单例并发串号）
-        tool_schemas = self.tool_registry.specs()
         est_prompt_tokens = TokenBudgetEstimator.estimate_messages_tokens(conversation, tools=tool_schemas)
         logger.info(
-            "ReAct Step %d: estimated prompt tokens=%d (history_budget=%s, stats=%s)",
+            "ReAct Step %d: estimated prompt tokens=%d (history_budget=%s, stats=%s, routed_tools=%s)",
             step_idx,
             est_prompt_tokens,
             self.context_compactor.max_history_tokens,
             compactor_stats,
+            [schema.get("function", {}).get("name") for schema in tool_schemas],
         )
 
         thought_filter = None
@@ -198,6 +209,7 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
         current_tool_name = None
         current_tool_args = None
         plan: str | None = None
+        invocation = None
         if tool_calls:
             first_tool = tool_calls[0]
             invocation = resolve_tool_call(
@@ -205,7 +217,17 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
                 first_tool,
                 step_idx,
                 fallback_thought=reply_text.strip(),
+                allowed_tool_names=allowed_tool_names,
             )
+            if invocation is None:
+                logger.warning(
+                    "Step %d rejected tool call '%s' outside routed whitelist %s, degrading to text fallback",
+                    step_idx,
+                    first_tool.get("name"),
+                    sorted(allowed_tool_names),
+                )
+
+        if invocation is not None:
             current_tool_name = invocation["tool_name"]
             current_tool_args = invocation["tool_args"]
             thought = invocation["thought"]
@@ -270,6 +292,7 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
                 llm_call_count=llm_call_count,
                 total_tokens=total_tokens,
                 cancel_check=cancel_check,
+                tool_schemas=tool_schemas,
             )
             thought = retry_result["thought"]
             command = retry_result["command"]
@@ -307,4 +330,5 @@ class ThinkNodeMixin(PlanConfirmationMixin, RetryActionMixin, ConvergenceMixin):
             steering_events=steering_events,
             llm_call_count=llm_call_count,
             total_tokens=total_tokens,
+            allowed_tool_names=sorted(allowed_tool_names),
         )

@@ -150,9 +150,14 @@ async def test_react_engine_with_native_tool_calling():
         async for ev in uc.execute(saved_host.connection_id, "检查服务器负载"):
             events.append(ev)
 
-        # 验证传入了内置工具注册表的声明列表
+        # 验证动态路由后仍保留命令执行与任务收敛基线工具
         assert len(mock_llm.received_tools) >= 1
-        assert mock_llm.received_tools[0] == build_default_registry().specs()
+        routed_names = {
+            tool["function"]["name"] for tool in mock_llm.received_tools[0] or []
+        }
+        registered_names = {spec["function"]["name"] for spec in build_default_registry().specs()}
+        assert {"execute_ssh_command", "complete_troubleshooting"} <= routed_names
+        assert routed_names <= registered_names
 
         # 验证步骤事件正确产出
         thought_events = [e for e in events if e.get("type") == "thought"]
