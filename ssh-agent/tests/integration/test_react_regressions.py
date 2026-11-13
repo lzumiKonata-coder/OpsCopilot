@@ -2,13 +2,21 @@
 智能运维 ReAct 安全回归、终端时序与多模态测试
 """
 
+import asyncio
 import time
 
 import pytest
 
 from adapter.repository.db_engine import get_session_factory
 from adapter.repository import SQLAlchemyChatRepository, SQLAlchemySSHConnectionRepository
-from adapter.ssh.terminal_manager import InMemorySSHTerminalSessionManager
+from adapter.ssh.terminal_manager import (
+    InMemorySSHTerminalSessionManager,
+    _extract_prompt_fingerprint,
+    _is_ready_to_inject,
+    _looks_like_unknown_prompt,
+    _prompt_returned,
+)
+import adapter.ssh.terminal_manager as terminal_manager
 from application.ports import ILLMClient
 from application.react.engine import LangGraphReActEngine
 from application.react.observation import detect_command_error
@@ -258,6 +266,165 @@ async def test_terminal_send_and_capture_degrades_when_never_idle():
     assert fake.written == ["uptime\r"]  # 超时后降级注入仍发生
     assert elapsed >= 0.8
     assert "root@hadoop100" in captured
+
+
+def test_prompt_fingerprint_extraction_and_exact_match():
+    """验证提示符字面指纹提取，以及必须精确匹配同一字符串"""
+    assert _extract_prompt_fingerprint("output\n[root@hadoop100 ~]# ") == "[root@hadoop100 ~]#"
+    assert _extract_prompt_fingerprint("output\nroot@ubuntu:~$ ") == "root@ubuntu:~$"
+    # 普通输出行末尾的 $ 不是 Shell 提示符
+    assert _extract_prompt_fingerprint("part-number-100$") is None
+
+    assert _prompt_returned("[root@hadoop100 ~]#\n[root@hadoop100 ~]# ", "[root@hadoop100 ~]#")
+    # 提示符路径发生变化时不视为精确回归
+    assert not _prompt_returned("[root@hadoop100 /tmp]# ", "[root@hadoop100 ~]#")
+
+
+@pytest.mark.asyncio
+async def test_terminal_waits_for_exact_prompt_fingerprint():
+    """P0 回归: 输出末尾出现 $ 时不得提前判定完成，必须等待注入前记录的同一提示符回归"""
+    mgr = InMemorySSHTerminalSessionManager()
+
+    class DelayedPromptPty:
+        def __init__(self, manager, identifier):
+            self.manager = manager
+            self.identifier = identifier
+            self.stdin = self
+            self.written: list[str] = []
+
+        def write(self, data: str):
+            self.written.append(data)
+            self.manager.on_stdout_chunk(self.identifier, f"{data}\r\npart-number-100$\r\n")
+
+            async def _emit_real_prompt():
+                await asyncio.sleep(0.5)
+                self.manager.on_stdout_chunk(self.identifier, "[root@hadoop100 ~]# ")
+
+            asyncio.create_task(_emit_real_prompt())
+
+    fake = DelayedPromptPty(mgr, "conn-fingerprint")
+    mgr.register("conn-fingerprint", process=fake)
+    mgr.on_stdout_chunk("conn-fingerprint", "[root@hadoop100 ~]# ")
+
+    start = time.monotonic()
+    captured = await mgr.send_and_capture("conn-fingerprint", "echo test", wait_seconds=0.2)
+    elapsed = time.monotonic() - start
+
+    # 若在 part-number-100$ 处提前返回，耗时会明显小于真实提示符到达时间
+    assert elapsed >= 0.45
+    assert "part-number-100$" in captured
+    assert "[root@hadoop100 ~]#" in captured
+
+
+def test_idle_detection_requires_real_prompt():
+    """验证注入前空闲判定要求末行是真实提示符，普通输出行末尾的 ? 不算空闲"""
+    assert _is_ready_to_inject("[root@hadoop100 ~]# ")
+    assert not _is_ready_to_inject("正在检查磁盘使用情况?\n")
+    assert not _is_ready_to_inject("是否继续执行? ")
+    assert _is_ready_to_inject("是否继续执行? ", allow_interactive=True)
+
+
+def test_common_custom_prompt_styles_are_recognized():
+    """验证常见自定义 PS1 风格可被指纹提取识别"""
+    assert _extract_prompt_fingerprint("(venv) root@ubuntu:~$ ") == "(venv) root@ubuntu:~$"
+    assert _extract_prompt_fingerprint("➜  ~ ") == "➜  ~"
+    assert _extract_prompt_fingerprint("[root@hadoop100 ~]# ") == "[root@hadoop100 ~]#"
+
+    # 未知自定义提示符通过兜底特征识别
+    assert _looks_like_unknown_prompt("myserver$")
+    assert _looks_like_unknown_prompt("myserver →")
+    assert not _looks_like_unknown_prompt("Error: connection refused")
+
+
+@pytest.mark.asyncio
+async def test_terminal_prompt_structure_allows_cwd_change():
+    """验证工作目录变化导致提示符不同时，按 user@host 结构等价立即判定完成"""
+    mgr = InMemorySSHTerminalSessionManager()
+
+    class CwdChangePty:
+        def __init__(self, manager, identifier):
+            self.manager = manager
+            self.identifier = identifier
+            self.stdin = self
+            self.written: list[str] = []
+
+        def write(self, data: str):
+            self.written.append(data)
+            self.manager.on_stdout_chunk(
+                self.identifier,
+                f"{data}\r\nfile-a\r\n[root@hadoop100 /tmp]# ",
+            )
+
+    mgr.register("conn-cwd", process=CwdChangePty(mgr, "conn-cwd"))
+    mgr.on_stdout_chunk("conn-cwd", "[root@hadoop100 ~]# ")
+
+    start = time.monotonic()
+    captured = await mgr.send_and_capture("conn-cwd", "cd /tmp && ls", wait_seconds=0.1)
+    elapsed = time.monotonic() - start
+
+    # 未走 45s 静默兜底，说明结构等价分支生效
+    assert elapsed < 5.0
+    assert "file-a" in captured
+    assert "[root@hadoop100 /tmp]#" in captured
+
+
+@pytest.mark.asyncio
+async def test_terminal_prompt_mismatch_grace_accepts_changed_user(monkeypatch):
+    """验证切换用户等结构变化场景在宽限窗口后降级接受新提示符，避免长时间挂起"""
+    monkeypatch.setattr(terminal_manager, "PROMPT_MISMATCH_GRACE_SECONDS", 0.3)
+    mgr = InMemorySSHTerminalSessionManager()
+
+    class UserSwitchPty:
+        def __init__(self, manager, identifier):
+            self.manager = manager
+            self.identifier = identifier
+            self.stdin = self
+            self.written: list[str] = []
+
+        def write(self, data: str):
+            self.written.append(data)
+            self.manager.on_stdout_chunk(self.identifier, f"{data}\r\nadmin@hadoop100:~$ ")
+
+    mgr.register("conn-user-switch", process=UserSwitchPty(mgr, "conn-user-switch"))
+    mgr.on_stdout_chunk("conn-user-switch", "[root@hadoop100 ~]# ")
+
+    start = time.monotonic()
+    captured = await mgr.send_and_capture("conn-user-switch", "su - admin", wait_seconds=0.1)
+    elapsed = time.monotonic() - start
+
+    assert elapsed >= 0.3
+    assert "admin@hadoop100" in captured
+
+
+@pytest.mark.asyncio
+async def test_terminal_unknown_prompt_degrades_after_grace(monkeypatch):
+    """P0: 自定义提示符未被已知规则识别时，静默宽限后降级接受，避免空等 15s 并误发 Ctrl+C"""
+    monkeypatch.setattr(terminal_manager, "PROMPT_MISMATCH_GRACE_SECONDS", 0.3)
+    mgr = InMemorySSHTerminalSessionManager()
+
+    class UnknownPromptPty:
+        def __init__(self, manager, identifier):
+            self.manager = manager
+            self.identifier = identifier
+            self.stdin = self
+            self.written: list[str] = []
+
+        def write(self, data: str):
+            self.written.append(data)
+            self.manager.on_stdout_chunk(self.identifier, f"{data}\r\nresult-ok\r\nmyserver$ ")
+
+    fake = UnknownPromptPty(mgr, "conn-unknown-prompt")
+    mgr.register("conn-unknown-prompt", process=fake)
+    mgr.on_stdout_chunk("conn-unknown-prompt", "[root@hadoop100 ~]# ")
+
+    start = time.monotonic()
+    captured = await mgr.send_and_capture("conn-unknown-prompt", "echo hi", wait_seconds=0.1)
+    elapsed = time.monotonic() - start
+
+    assert elapsed >= 0.3
+    assert "result-ok" in captured
+    # 降级接受而非到达静默超时后误发 Ctrl+C
+    assert fake.written == ["echo hi\r"]
 
 
 # ==================== LangGraph 重构与缺陷修复增强回归测试 ====================

@@ -244,7 +244,7 @@ npm run build
 ### 3. 测试与验证
 
 ```bash
-# 全量用例（202 条 = 69 单元 + 133 集成）
+# 全量用例（数量以 pytest 实际收集结果为准）
 python -m pytest tests/
 
 # 仅快速单元测试（无数据库 / ASGI 依赖，秒级完成）
@@ -271,7 +271,7 @@ python -m pytest tests/integration
 │   │   ├── security/                    # bashlex AST 25 种包装器解包与 Python 载荷审计
 │   │   ├── web/                         # FastAPI 路由、SSE 响应流与依赖装配 (factory.py)
 │   │   └── event_bus/                   # RunEventBroker 事件缓冲与断线回放
-│   ├── tests/                           # 202 条用例（unit 69 / integration 133）
+│   ├── tests/                           # 单元测试与集成测试
 │   └── run.py                           # 后端启动入口
 │
 └── ssh-client/                          # 前端（React 19 + TypeScript 工作台）
